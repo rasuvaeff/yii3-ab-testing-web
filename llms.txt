@@ -1,0 +1,58 @@
+# yii3-ab-testing-web
+
+## Install
+
+```bash
+composer require rasuvaeff/yii3-ab-testing-web
+```
+
+## Rules
+
+- Requires core `^1.1` (adds `AssignmentStore`).
+- Assignment is deterministic in `subjectId`; a stable id keeps a visitor in the same variant across visits without storing anything.
+- `SubjectIdMiddleware` (PSR-15): pre-set request attribute (logged-in userId) wins → no cookie; else reuse `ab_id` cookie; else generate opaque id (`random_bytes(16)` hex, NOT a UUID) + set long-lived `HttpOnly`, `SameSite=Lax`, `Secure` cookie. TTL via `Max-Age`. `process()` may throw `\Random\RandomException`.
+- `CookieAssignmentStore implements AssignmentStore`: sticky variants in one signed cookie (`yiisoft/cookies` `CookieSigner`). Request-scoped: `fromRequest()` / `applyToResponse()`. Missing/unsigned/tampered/malformed cookie → empty store. Browser-scoped → `$subjectId` arg ignored.
+- `StickyAssignmentResolver`: forced variant bypasses the store; disabled experiment → fallback, no store read/write (kill switch wins); stored variant reused only while still a valid variant; fallbacks not stored. Keeps `AbTesting::assign()` pure.
+- No `config/di.php`: the store is request-scoped and middleware are added by the app — nothing to bind.
+
+## API
+
+### SubjectIdMiddleware
+
+```php
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdMiddleware;
+
+$mw = new SubjectIdMiddleware(
+    cookieName: 'ab_id',          // optional
+    attribute: 'ab.subjectId',    // optional
+    // maxAge: DateInterval, secure: bool, sameSite: Cookie::SAME_SITE_*
+);
+// in handler:
+$subjectId = $request->getAttribute('ab.subjectId');
+```
+
+### CookieAssignmentStore
+
+```php
+use Rasuvaeff\Yii3AbTestingWeb\CookieAssignmentStore;
+use Yiisoft\Cookies\CookieSigner;
+
+$store = CookieAssignmentStore::fromRequest($request, new CookieSigner($secretKey)); // 'ab_variants'
+$store->get('checkout-button', $subjectId);     // ?string
+$store->put('checkout-button', $subjectId, 'green');
+$response = $store->applyToResponse($response);  // writes signed cookie if changed
+```
+
+### StickyAssignmentResolver
+
+```php
+use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentResolver;
+
+$resolver = new StickyAssignmentResolver($ab, $store);
+$assignment = $resolver->resolve(
+    experiment: 'checkout-button',
+    subjectId: $subjectId,
+    forcedVariant: null,     // optional, bypasses the store
+    context: null,           // optional AssignmentContext
+);
+```

@@ -1,0 +1,91 @@
+{
+    "name": "rasuvaeff/yii3-ab-testing-web",
+    "description": "Cookie identity and sticky-variant store for Yii3 A/B testing",
+    "license": "BSD-3-Clause",
+    "type": "library",
+    "keywords": [
+        "ab-testing",
+        "experiment",
+        "cookie",
+        "middleware",
+        "sticky",
+        "yii3"
+    ],
+    "authors": [
+        {
+            "name": "Victor Razuvaev",
+            "email": "rasuvaeff@gmail.com"
+        }
+    ],
+    "homepage": "https://github.com/rasuvaeff/yii3-ab-testing-web",
+    "support": {
+        "issues": "https://github.com/rasuvaeff/yii3-ab-testing-web/issues",
+        "source": "https://github.com/rasuvaeff/yii3-ab-testing-web"
+    },
+    "require": {
+        "php": "^8.3",
+        "psr/http-message": "^2.0",
+        "psr/http-server-handler": "^1.0",
+        "psr/http-server-middleware": "^1.0",
+        "rasuvaeff/yii3-ab-testing": "^1.1",
+        "yiisoft/cookies": "^1.2"
+    },
+    "require-dev": {
+        "ergebnis/composer-normalize": "^2.51",
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "infection/infection": "^0.29",
+        "maglnet/composer-require-checker": "^4.17",
+        "nyholm/psr7": "^1.8",
+        "phpunit/phpunit": "^11.5",
+        "rector/rector": "^2.4",
+        "roave/backward-compatibility-check": "^8.0",
+        "vimeo/psalm": "^6.16"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rasuvaeff\\Yii3AbTestingWeb\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rasuvaeff\\Yii3AbTestingWeb\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true,
+            "infection/extension-installer": true
+        },
+        "platform": {
+            "ext-bcmath": "1.0.0",
+            "ext-intl": "1.0.0"
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "bc-check": "roave-backward-compatibility-check",
+        "build": [
+            "@composer validate --strict",
+            "@composer normalize --dry-run",
+            "@require-checker",
+            "@cs",
+            "@psalm",
+            "@test"
+        ],
+        "cs": "php-cs-fixer fix --dry-run --diff --config=.php-cs-fixer.php",
+        "cs:fix": "php-cs-fixer fix --diff --config=.php-cs-fixer.php",
+        "mutation": "infection --threads=max",
+        "psalm": "psalm --no-cache",
+        "rector": "rector process --dry-run",
+        "rector:fix": "rector process",
+        "release-check": [
+            "@build",
+            "@rector",
+            "@bc-check"
+        ],
+        "require-checker": "composer-require-checker check composer.json",
+        "test": "phpunit",
+        "test:coverage": "phpunit --coverage-text --coverage-clover=build/coverage.xml",
+        "test:coverage:ci": "phpunit --coverage-clover=build/coverage.xml"
+    }
+}
