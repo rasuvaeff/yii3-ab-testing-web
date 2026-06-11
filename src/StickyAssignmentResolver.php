@@ -21,6 +21,7 @@ use Rasuvaeff\Yii3AbTesting\AssignmentStore;
  *  - A stored variant is reused only while it is still a variant of the
  *    experiment; if it was removed, a fresh variant is assigned and stored.
  *  - Fallback results are not stored.
+ *  - An assignment served from the store carries `isSticky = true`.
  *
  * @api
  */
@@ -57,6 +58,7 @@ final readonly class StickyAssignmentResolver
                     variant: $stored,
                     subjectId: $subjectId,
                     context: $context,
+                    isSticky: true,
                 );
             }
         }

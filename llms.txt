@@ -8,11 +8,13 @@ composer require rasuvaeff/yii3-ab-testing-web
 
 ## Rules
 
-- Requires core `^1.1` (adds `AssignmentStore`).
+- Requires core `^1.2` (adds `AssignmentStore` and `Assignment::isSticky`).
 - Assignment is deterministic in `subjectId`; a stable id keeps a visitor in the same variant across visits without storing anything.
 - `SubjectIdMiddleware` (PSR-15): pre-set request attribute (logged-in userId) wins → no cookie; else reuse `ab_id` cookie; else generate opaque id (`random_bytes(16)` hex, NOT a UUID) + set long-lived `HttpOnly`, `SameSite=Lax`, `Secure` cookie. TTL via `Max-Age`. `process()` may throw `\Random\RandomException`.
 - `CookieAssignmentStore implements AssignmentStore`: sticky variants in one signed cookie (`yiisoft/cookies` `CookieSigner`). Request-scoped: `fromRequest()` / `applyToResponse()`. Missing/unsigned/tampered/malformed cookie → empty store. Browser-scoped → `$subjectId` arg ignored.
-- `StickyAssignmentResolver`: forced variant bypasses the store; disabled experiment → fallback, no store read/write (kill switch wins); stored variant reused only while still a valid variant; fallbacks not stored. Keeps `AbTesting::assign()` pure.
+- `StickyAssignmentResolver`: forced variant bypasses the store; disabled experiment → fallback, no store read/write (kill switch wins); stored variant reused only while still a valid variant (served with `isSticky = true`); fallbacks not stored. Keeps `AbTesting::assign()` pure.
+- `SubjectIdMiddleware` reuses the `ab_id` cookie only when it matches `/^[0-9a-f]{32}$/`; foreign values are regenerated.
+- `CookieAssignmentStore::prune(ExperimentRegistry)` drops variants of removed experiments; call before `applyToResponse()`.
 - No `config/di.php`: the store is request-scoped and middleware are added by the app — nothing to bind.
 
 ## API

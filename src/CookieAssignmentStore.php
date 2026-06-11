@@ -8,6 +8,7 @@ use DateInterval;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Rasuvaeff\Yii3AbTesting\AssignmentStore;
+use Rasuvaeff\Yii3AbTesting\ExperimentRegistry;
 use Yiisoft\Cookies\Cookie;
 use Yiisoft\Cookies\CookieSigner;
 
@@ -69,6 +70,23 @@ final class CookieAssignmentStore implements AssignmentStore
     {
         $this->variants[$experiment] = $variant;
         $this->dirty = true;
+    }
+
+    /**
+     * Drops stored variants of experiments that no longer exist, so entries of
+     * removed experiments do not ride along in the cookie for its whole max-age
+     * (and the cookie stays clear of the 4 KB browser limit). Call before
+     * {@see applyToResponse()}; the rewrite happens only when something was
+     * actually removed (or stored).
+     */
+    public function prune(ExperimentRegistry $registry): void
+    {
+        foreach (array_keys($this->variants) as $experiment) {
+            if (!$registry->has($experiment)) {
+                unset($this->variants[$experiment]);
+                $this->dirty = true;
+            }
+        }
     }
 
     /**

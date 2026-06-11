@@ -50,12 +50,27 @@ final class SubjectIdMiddlewareTest extends TestCase
     public function reusesCookieValueWithoutSettingCookie(): void
     {
         $handler = new CapturingHandler(new Response());
-        $request = (new ServerRequest('GET', '/'))->withCookieParams(['ab_id' => 'existing-id']);
+        $request = (new ServerRequest('GET', '/'))->withCookieParams(['ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']);
 
         $response = (new SubjectIdMiddleware())->process($request, $handler);
 
-        $this->assertSame('existing-id', $handler->received?->getAttribute('ab.subjectId'));
+        $this->assertSame('a1b2c3d4e5f60718293a4b5c6d7e8f90', $handler->received?->getAttribute('ab.subjectId'));
         $this->assertFalse($response->hasHeader('Set-Cookie'));
+    }
+
+    #[Test]
+    public function regeneratesIdWhenCookieValueHasForeignFormat(): void
+    {
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))
+            ->withCookieParams(['ab_id' => 'tampered-or-oversized-value']);
+
+        $response = (new SubjectIdMiddleware())->process($request, $handler);
+
+        $subjectId = $handler->received?->getAttribute('ab.subjectId');
+        $this->assertIsString($subjectId);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $subjectId);
+        $this->assertTrue($response->hasHeader('Set-Cookie'));
     }
 
     #[Test]
@@ -78,9 +93,9 @@ final class SubjectIdMiddlewareTest extends TestCase
         $handler = new CapturingHandler(new Response());
         $middleware = new SubjectIdMiddleware(cookieName: 'sid', attribute: 'subject');
 
-        $response = $middleware->process((new ServerRequest('GET', '/'))->withCookieParams(['sid' => 'abc']), $handler);
+        $response = $middleware->process((new ServerRequest('GET', '/'))->withCookieParams(['sid' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']), $handler);
 
-        $this->assertSame('abc', $handler->received?->getAttribute('subject'));
+        $this->assertSame('a1b2c3d4e5f60718293a4b5c6d7e8f90', $handler->received?->getAttribute('subject'));
         $this->assertFalse($response->hasHeader('Set-Cookie'));
     }
 }

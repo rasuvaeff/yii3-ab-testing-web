@@ -48,19 +48,22 @@ Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
 
 ## Invariants & gotchas
 
-- Requires core `^1.1` (the release that adds `AssignmentStore`). Resolves from
+- Requires core `^1.2` (`AssignmentStore`, `Assignment::isSticky`). Resolves from
   Packagist; no path repository needed.
 - `SubjectIdMiddleware`: pre-set attribute (logged-in `userId`) wins → no cookie;
-  else reuse `ab_id` cookie; else generate + set a long-lived `HttpOnly`,
+  else reuse `ab_id` cookie (only when it matches `/^[0-9a-f]{32}$/` — foreign
+  values are regenerated); else generate + set a long-lived `HttpOnly`,
   `SameSite=Lax` cookie. Cookie TTL uses `Max-Age` (a `DateInterval`), so no clock
   dependency. `process()` declares `@throws \Random\RandomException`.
 - `CookieAssignmentStore` is browser-scoped: the `$subjectId` argument is ignored
   (the cookie identifies the subject). An anonymous→logged-in visitor keeps the
   variants stored under their anonymous identity — intentional, documented.
+  `prune(ExperimentRegistry)` drops entries of removed experiments; call it before
+  `applyToResponse()` (rewrite happens only when something changed).
 - `StickyAssignmentResolver`: forced variant bypasses the store; a disabled
   experiment returns its fallback and never reads/writes the store (kill switch
   always wins); a stored variant is reused only while it is still a variant of the
-  experiment; fallbacks are not stored.
+  experiment (and is served with `isSticky = true`); fallbacks are not stored.
 - Tests use `nyholm/psr7` for PSR-7 messages and a real `Yiisoft\Cookies\CookieSigner`.
 - Code: `declare(strict_types=1)`; `SubjectIdMiddleware`/`StickyAssignmentResolver`
   are `final readonly`, `CookieAssignmentStore` is `final` (mutable variant map);

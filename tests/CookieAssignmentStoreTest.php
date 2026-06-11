@@ -10,6 +10,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ServerRequestInterface;
+use Rasuvaeff\Yii3AbTesting\ConfigExperimentProvider;
+use Rasuvaeff\Yii3AbTesting\ExperimentRegistry;
 use Rasuvaeff\Yii3AbTestingWeb\CookieAssignmentStore;
 use Yiisoft\Cookies\Cookie;
 use Yiisoft\Cookies\CookieSigner;
@@ -138,5 +140,41 @@ final class CookieAssignmentStoreTest extends TestCase
         $value = substr($pair, strpos($pair, '=') + 1);
 
         return $this->requestWithCookie(urldecode($value));
+    }
+
+    #[Test]
+    public function pruneRemovesVariantsOfRemovedExperimentsAndRewritesCookie(): void
+    {
+        $store = new CookieAssignmentStore(signer: $this->signer);
+        $store->put('checkout-button', 'user-1', 'green');
+        $store->put('retired-experiment', 'user-1', 'variant-b');
+
+        $store->prune($this->registryWith('checkout-button'));
+
+        $this->assertSame('green', $store->get('checkout-button', 'user-1'));
+        $this->assertNull($store->get('retired-experiment', 'user-1'));
+        $this->assertTrue($store->applyToResponse(new Response())->hasHeader('Set-Cookie'));
+    }
+
+    #[Test]
+    public function pruneWithOnlyKnownExperimentsWritesNoCookie(): void
+    {
+        $request = new ServerRequest('GET', '/');
+        $store = CookieAssignmentStore::fromRequest($request, $this->signer);
+
+        $store->prune($this->registryWith('checkout-button'));
+
+        $this->assertFalse($store->applyToResponse(new Response())->hasHeader('Set-Cookie'));
+    }
+
+    private function registryWith(string $experiment): ExperimentRegistry
+    {
+        return new ExperimentRegistry(provider: new ConfigExperimentProvider(config: [
+            $experiment => [
+                'salt' => 'salt-v1',
+                'fallbackVariant' => 'control',
+                'variants' => ['control' => 50, 'green' => 50],
+            ],
+        ]));
     }
 }

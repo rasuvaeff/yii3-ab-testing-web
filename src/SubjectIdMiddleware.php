@@ -18,7 +18,10 @@ use Yiisoft\Cookies\Cookie;
  * Resolution order:
  *  1. If the configured attribute is already a non-empty string (an upstream auth
  *     middleware set `subjectId = userId`), it is left untouched — no cookie.
- *  2. Otherwise the `ab_id` cookie is read; a present value is reused.
+ *  2. Otherwise the `ab_id` cookie is read; a value matching the generated
+ *     format (32 lowercase hex chars) is reused — anything else (tampered,
+ *     truncated, oversized) is discarded and regenerated, so arbitrary
+ *     client-supplied strings never become subject ids in logs and analytics.
  *  3. Otherwise a new opaque id (`random_bytes(16)`, hex) is generated and a
  *     long-lived `HttpOnly`, `SameSite=Lax` cookie is set on the response.
  *
@@ -31,6 +34,8 @@ use Yiisoft\Cookies\Cookie;
  */
 final readonly class SubjectIdMiddleware implements MiddlewareInterface
 {
+    private const string ID_PATTERN = '/^[0-9a-f]{32}$/';
+
     public function __construct(
         private string $cookieName = 'ab_id',
         private string $attribute = 'ab.subjectId',
@@ -49,7 +54,7 @@ final readonly class SubjectIdMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        $fromCookie = $this->stringOrNull($request->getCookieParams()[$this->cookieName] ?? null);
+        $fromCookie = $this->validIdOrNull($request->getCookieParams()[$this->cookieName] ?? null);
 
         if ($fromCookie !== null) {
             return $handler->handle($request->withAttribute($this->attribute, $fromCookie));
@@ -71,5 +76,10 @@ final readonly class SubjectIdMiddleware implements MiddlewareInterface
     private function stringOrNull(mixed $value): ?string
     {
         return \is_string($value) && $value !== '' ? $value : null;
+    }
+
+    private function validIdOrNull(mixed $value): ?string
+    {
+        return \is_string($value) && preg_match(self::ID_PATTERN, $value) === 1 ? $value : null;
     }
 }

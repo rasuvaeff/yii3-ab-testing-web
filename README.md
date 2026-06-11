@@ -16,7 +16,7 @@ need it, pins a subject to a variant across weight changes via a signed cookie.
 ## Requirements
 
 - PHP 8.3+
-- `rasuvaeff/yii3-ab-testing` ^1.1 (adds `AssignmentStore`)
+- `rasuvaeff/yii3-ab-testing` ^1.2 (adds `AssignmentStore` and `Assignment::isSticky`)
 - `yiisoft/cookies` ^1.2
 - a PSR-7 implementation (e.g. `nyholm/psr7`) and a PSR-15 stack
 
@@ -47,7 +47,7 @@ exposes it as a request attribute (`ab.subjectId` by default):
 
 1. if the attribute is already set (an upstream auth middleware put `userId` there)
    it is kept — no cookie;
-2. otherwise the `ab_id` cookie is reused;
+2. otherwise the `ab_id` cookie is reused — only when its value matches the generated format (32 lowercase hex chars); a tampered or oversized value is discarded and regenerated;
 3. otherwise a new opaque id is generated and a long-lived `HttpOnly`,
    `SameSite=Lax` cookie is set.
 

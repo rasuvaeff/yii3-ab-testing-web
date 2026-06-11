@@ -63,7 +63,16 @@ final class StickyAssignmentResolverTest extends TestCase
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
         $this->assertSame('control', $assignment->variant);
+        $this->assertTrue($assignment->isSticky);
         $this->assertSame([], $this->store->puts);
+    }
+
+    #[Test]
+    public function freshAssignmentIsNotSticky(): void
+    {
+        $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
+
+        $this->assertFalse($assignment->isSticky);
     }
 
     #[Test]
