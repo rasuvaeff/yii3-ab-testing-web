@@ -47,6 +47,22 @@ final class SubjectIdMiddlewareTest extends TestCase
     }
 
     #[Test]
+    public function treatsEmptyPreSetAttributeAsAbsentAndGeneratesId(): void
+    {
+        // An empty-string attribute must be treated as absent (string AND non-empty),
+        // so a fresh id is generated rather than the empty value being kept.
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))->withAttribute('ab.subjectId', '');
+
+        $response = (new SubjectIdMiddleware())->process($request, $handler);
+
+        $subjectId = $handler->received?->getAttribute('ab.subjectId');
+        $this->assertIsString($subjectId);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $subjectId);
+        $this->assertTrue($response->hasHeader('Set-Cookie'));
+    }
+
+    #[Test]
     public function reusesCookieValueWithoutSettingCookie(): void
     {
         $handler = new CapturingHandler(new Response());
