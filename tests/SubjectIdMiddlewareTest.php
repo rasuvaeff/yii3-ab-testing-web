@@ -6,33 +6,32 @@ namespace Rasuvaeff\Yii3AbTestingWeb\Tests;
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\Yii3AbTestingWeb\SubjectIdMiddleware;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(SubjectIdMiddleware::class)]
-final class SubjectIdMiddlewareTest extends TestCase
+#[Test]
+#[Covers(SubjectIdMiddleware::class)]
+final class SubjectIdMiddlewareTest
 {
-    #[Test]
     public function generatesOpaqueIdAndSetsCookieWhenNonePresent(): void
     {
         $handler = new CapturingHandler(new Response());
         $response = (new SubjectIdMiddleware())->process(new ServerRequest('GET', '/'), $handler);
 
         $subjectId = $handler->received?->getAttribute('ab.subjectId');
-        $this->assertIsString($subjectId);
-        $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $subjectId);
+        Assert::true(is_string($subjectId));
+        Assert::true(preg_match('/^[0-9a-f]{32}$/', $subjectId) === 1);
 
         $setCookie = $response->getHeaderLine('Set-Cookie');
-        $this->assertStringStartsWith('ab_id=' . $subjectId, $setCookie);
-        $this->assertStringContainsString('HttpOnly', $setCookie);
-        $this->assertStringContainsString('SameSite=Lax', $setCookie);
-        $this->assertStringContainsString('Secure', $setCookie);
-        $this->assertStringContainsString('Max-Age=', $setCookie);
+        Assert::true(str_starts_with($setCookie, 'ab_id=' . $subjectId));
+        Assert::string($setCookie)->contains('HttpOnly');
+        Assert::string($setCookie)->contains('SameSite=Lax');
+        Assert::string($setCookie)->contains('Secure');
+        Assert::string($setCookie)->contains('Max-Age=');
     }
 
-    #[Test]
     public function treatsEmptyCookieValueAsAbsentAndGeneratesId(): void
     {
         $handler = new CapturingHandler(new Response());
@@ -41,28 +40,24 @@ final class SubjectIdMiddlewareTest extends TestCase
         $response = (new SubjectIdMiddleware())->process($request, $handler);
 
         $subjectId = $handler->received?->getAttribute('ab.subjectId');
-        $this->assertIsString($subjectId);
-        $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $subjectId);
-        $this->assertTrue($response->hasHeader('Set-Cookie'));
+        Assert::true(is_string($subjectId));
+        Assert::true(preg_match('/^[0-9a-f]{32}$/', $subjectId) === 1);
+        Assert::true($response->hasHeader('Set-Cookie'));
     }
 
-    #[Test]
     public function treatsEmptyPreSetAttributeAsAbsentAndGeneratesId(): void
     {
-        // An empty-string attribute must be treated as absent (string AND non-empty),
-        // so a fresh id is generated rather than the empty value being kept.
         $handler = new CapturingHandler(new Response());
         $request = (new ServerRequest('GET', '/'))->withAttribute('ab.subjectId', '');
 
         $response = (new SubjectIdMiddleware())->process($request, $handler);
 
         $subjectId = $handler->received?->getAttribute('ab.subjectId');
-        $this->assertIsString($subjectId);
-        $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $subjectId);
-        $this->assertTrue($response->hasHeader('Set-Cookie'));
+        Assert::true(is_string($subjectId));
+        Assert::true(preg_match('/^[0-9a-f]{32}$/', $subjectId) === 1);
+        Assert::true($response->hasHeader('Set-Cookie'));
     }
 
-    #[Test]
     public function reusesCookieValueWithoutSettingCookie(): void
     {
         $handler = new CapturingHandler(new Response());
@@ -70,11 +65,10 @@ final class SubjectIdMiddlewareTest extends TestCase
 
         $response = (new SubjectIdMiddleware())->process($request, $handler);
 
-        $this->assertSame('a1b2c3d4e5f60718293a4b5c6d7e8f90', $handler->received?->getAttribute('ab.subjectId'));
-        $this->assertFalse($response->hasHeader('Set-Cookie'));
+        Assert::same($handler->received?->getAttribute('ab.subjectId'), 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
+        Assert::false($response->hasHeader('Set-Cookie'));
     }
 
-    #[Test]
     public function regeneratesIdWhenCookieValueHasForeignFormat(): void
     {
         $handler = new CapturingHandler(new Response());
@@ -84,12 +78,11 @@ final class SubjectIdMiddlewareTest extends TestCase
         $response = (new SubjectIdMiddleware())->process($request, $handler);
 
         $subjectId = $handler->received?->getAttribute('ab.subjectId');
-        $this->assertIsString($subjectId);
-        $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $subjectId);
-        $this->assertTrue($response->hasHeader('Set-Cookie'));
+        Assert::true(is_string($subjectId));
+        Assert::true(preg_match('/^[0-9a-f]{32}$/', $subjectId) === 1);
+        Assert::true($response->hasHeader('Set-Cookie'));
     }
 
-    #[Test]
     public function leavesPreSetAttributeUntouchedAndSetsNoCookie(): void
     {
         $handler = new CapturingHandler(new Response());
@@ -99,11 +92,10 @@ final class SubjectIdMiddlewareTest extends TestCase
 
         $response = (new SubjectIdMiddleware())->process($request, $handler);
 
-        $this->assertSame('user-42', $handler->received?->getAttribute('ab.subjectId'));
-        $this->assertFalse($response->hasHeader('Set-Cookie'));
+        Assert::same($handler->received?->getAttribute('ab.subjectId'), 'user-42');
+        Assert::false($response->hasHeader('Set-Cookie'));
     }
 
-    #[Test]
     public function honoursCustomCookieAndAttributeNames(): void
     {
         $handler = new CapturingHandler(new Response());
@@ -111,7 +103,7 @@ final class SubjectIdMiddlewareTest extends TestCase
 
         $response = $middleware->process((new ServerRequest('GET', '/'))->withCookieParams(['sid' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']), $handler);
 
-        $this->assertSame('a1b2c3d4e5f60718293a4b5c6d7e8f90', $handler->received?->getAttribute('subject'));
-        $this->assertFalse($response->hasHeader('Set-Cookie'));
+        Assert::same($handler->received?->getAttribute('subject'), 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
+        Assert::false($response->hasHeader('Set-Cookie'));
     }
 }

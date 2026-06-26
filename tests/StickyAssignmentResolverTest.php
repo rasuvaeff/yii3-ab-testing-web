@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingWeb\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\Yii3AbTesting\AbTesting;
 use Rasuvaeff\Yii3AbTesting\ConfigExperimentProvider;
 use Rasuvaeff\Yii3AbTesting\Exception\InvalidExperimentException;
 use Rasuvaeff\Yii3AbTesting\WeightedHashAssignmentStrategy;
 use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentResolver;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Expect;
+use Testo\Lifecycle\BeforeTest;
+use Testo\Test;
 
-#[CoversClass(StickyAssignmentResolver::class)]
-final class StickyAssignmentResolverTest extends TestCase
+#[Test]
+#[Covers(StickyAssignmentResolver::class)]
+final class StickyAssignmentResolverTest
 {
     private AbTesting $abTesting;
 
@@ -22,8 +25,8 @@ final class StickyAssignmentResolverTest extends TestCase
 
     private StickyAssignmentResolver $resolver;
 
-    #[\Override]
-    protected function setUp(): void
+    #[BeforeTest]
+    public function setUp(): void
     {
         $this->abTesting = new AbTesting(
             provider: new ConfigExperimentProvider(config: [
@@ -45,76 +48,69 @@ final class StickyAssignmentResolverTest extends TestCase
         $this->resolver = new StickyAssignmentResolver(abTesting: $this->abTesting, store: $this->store);
     }
 
-    #[Test]
     public function assignsFreshAndStoresWhenNothingStored(): void
     {
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
-        $this->assertArrayHasKey('checkout-button', $this->store->stored);
-        $this->assertSame($assignment->variant, $this->store->stored['checkout-button']);
-        $this->assertCount(1, $this->store->puts);
+        Assert::array($this->store->stored)->hasKeys('checkout-button');
+        Assert::same($this->store->stored['checkout-button'], $assignment->variant);
+        Assert::count($this->store->puts, 1);
     }
 
-    #[Test]
     public function reusesStoredVariantWithoutReassigning(): void
     {
         $this->store->stored['checkout-button'] = 'control';
 
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
-        $this->assertSame('control', $assignment->variant);
-        $this->assertTrue($assignment->isSticky);
-        $this->assertSame([], $this->store->puts);
+        Assert::same($assignment->variant, 'control');
+        Assert::true($assignment->isSticky);
+        Assert::same($this->store->puts, []);
     }
 
-    #[Test]
     public function freshAssignmentIsNotSticky(): void
     {
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
-        $this->assertFalse($assignment->isSticky);
+        Assert::false($assignment->isSticky);
     }
 
-    #[Test]
     public function forcedVariantBypassesStore(): void
     {
         $this->store->stored['checkout-button'] = 'control';
 
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1', forcedVariant: 'green');
 
-        $this->assertSame('green', $assignment->variant);
-        $this->assertTrue($assignment->isForced);
-        $this->assertSame([], $this->store->puts);
+        Assert::same($assignment->variant, 'green');
+        Assert::true($assignment->isForced);
+        Assert::same($this->store->puts, []);
     }
 
-    #[Test]
     public function disabledExperimentReturnsFallbackAndIgnoresStore(): void
     {
         $this->store->stored['pricing-page'] = 'variant-b';
 
         $assignment = $this->resolver->resolve(experiment: 'pricing-page', subjectId: 'user-1');
 
-        $this->assertSame('control', $assignment->variant);
-        $this->assertTrue($assignment->isFallback);
-        $this->assertSame([], $this->store->puts);
+        Assert::same($assignment->variant, 'control');
+        Assert::true($assignment->isFallback);
+        Assert::same($this->store->puts, []);
     }
 
-    #[Test]
     public function reassignsWhenStoredVariantNoLongerExists(): void
     {
         $this->store->stored['checkout-button'] = 'removed-variant';
 
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
-        $this->assertContains($assignment->variant, ['control', 'green']);
-        $this->assertSame($assignment->variant, $this->store->stored['checkout-button']);
-        $this->assertCount(1, $this->store->puts);
+        Assert::true(in_array($assignment->variant, ['control', 'green'], true));
+        Assert::same($this->store->stored['checkout-button'], $assignment->variant);
+        Assert::count($this->store->puts, 1);
     }
 
-    #[Test]
     public function throwsForUnknownExperiment(): void
     {
-        $this->expectException(InvalidExperimentException::class);
+        Expect::exception(InvalidExperimentException::class);
 
         $this->resolver->resolve(experiment: 'nope', subjectId: 'user-1');
     }
