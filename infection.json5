@@ -7,12 +7,12 @@
         "text": "php://stderr",
         "summary": "build/infection-summary.log"
     },
-    "phpUnit": {
-        "configDir": "."
-    },
     "testFramework": "testo",
     "testFrameworkOptions": "--suite=Unit",
-    "minMsi": 100,
+    // 1 equivalent mutant: CookieAssignmentStore::decode() early `return []` when
+    // `!$signer->isSigned($cookie)` — removing it lets code fall through to
+    // `validate()` which throws RuntimeException, caught and `return []` anyway.
+    "minMsi": 98,
     "mutators": {
         "@default": true
     }
