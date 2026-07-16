@@ -6,6 +6,7 @@
 [![Static Analysis](https://img.shields.io/github/actions/workflow/status/rasuvaeff/yii3-ab-testing-web/static-analysis.yml?branch=master&label=static%20analysis)](https://github.com/rasuvaeff/yii3-ab-testing-web/actions)
 [![PHP](https://img.shields.io/packagist/dependency-v/rasuvaeff/yii3-ab-testing-web/php)](https://packagist.org/packages/rasuvaeff/yii3-ab-testing-web)
 [![License](https://img.shields.io/packagist/l/rasuvaeff/yii3-ab-testing-web.svg)](LICENSE.md)
+[Русская версия](README.ru.md)
 
 Web identity and sticky-variant layer for Yii3 A/B testing. Gives every visitor a
 stable subject id (so deterministic assignment holds across visits) and, when you
