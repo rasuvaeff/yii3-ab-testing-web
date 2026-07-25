@@ -13,7 +13,9 @@ composer require rasuvaeff/yii3-ab-testing-web
 - `SubjectIdMiddleware` (PSR-15): pre-set request attribute (logged-in userId) wins → no cookie; else reuse `ab_id` cookie; else generate opaque id (`random_bytes(16)` hex, NOT a UUID) + set long-lived `HttpOnly`, `SameSite=Lax`, `Secure` cookie. TTL via `Max-Age`. `process()` may throw `\Random\RandomException`.
 - `CookieAssignmentStore implements AssignmentStore`: sticky variants in one signed cookie (`yiisoft/cookies` `CookieSigner`). Request-scoped: `fromRequest()` / `applyToResponse()`. Missing/unsigned/tampered/malformed cookie → empty store. Browser-scoped → `$subjectId` arg ignored.
 - `StickyAssignmentResolver`: forced variant bypasses the store; disabled experiment → fallback, no store read/write (kill switch wins); stored variant reused only while still a valid variant (served with `isSticky = true`); fallbacks not stored. Keeps `AbTesting::assign()` pure.
-- `SubjectIdMiddleware` reuses the `ab_id` cookie only when it matches `/^[0-9a-f]{32}$/`; foreign values are regenerated.
+- `SubjectIdMiddleware` reuses the `ab_id` cookie only when `SubjectIdGeneratorInterface::isValid()` accepts it; foreign values are regenerated.
+- `SubjectIdGeneratorInterface` = `generate()` + `isValid()`. Both halves or none: a generator whose `isValid()` rejects its own output makes the middleware mint a new id every request, flipping the visitor's variant on every page view. Default `HexSubjectIdGenerator` = 32 lowercase hex, anchored with `\z` (`$` would also match a trailing newline). `isValid()` is a security boundary — the cookie is attacker-controlled and whatever passes becomes the subject id in logs and analytics.
+- To pin the id to a logged-in user no generator is needed: an upstream middleware setting the `ab.subjectId` attribute wins over cookie and generator.
 - `CookieAssignmentStore::prune(ExperimentRegistry)` drops variants of removed experiments; call before `applyToResponse()`.
 - No `config/di.php`: the store is request-scoped and middleware are added by the app — nothing to bind.
 
@@ -28,7 +30,15 @@ $mw = new SubjectIdMiddleware(
     cookieName: 'ab_id',          // optional
     attribute: 'ab.subjectId',    // optional
     // maxAge: DateInterval, secure: bool, sameSite: Cookie::SAME_SITE_*
+    // idGenerator: SubjectIdGeneratorInterface (default HexSubjectIdGenerator)
 );
+
+interface SubjectIdGeneratorInterface
+{
+    /** @return non-empty-string */
+    public function generate(): string;
+    public function isValid(string $id): bool;
+}
 // in handler:
 $subjectId = $request->getAttribute('ab.subjectId');
 ```

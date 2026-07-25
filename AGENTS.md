@@ -64,8 +64,16 @@ make release-check
 
 - Requires core `^1.2` (`AssignmentStore`, `Assignment::isSticky`). Resolves from
   Packagist; no path repository needed.
+- **`SubjectIdGeneratorInterface` owns BOTH generation and validation.** They
+  cannot be split: the middleware reuses a cookie only when `isValid()` accepts
+  it, so a generator whose check rejects its own output mints a new id on every
+  request — and since assignment is deterministic in the subject id, the visitor
+  flips variants on every page view. `isValid()` is a security boundary: the
+  cookie is attacker-controlled and whatever passes becomes the subject id in
+  logs and analytics. Anchor patterns with `\z`, never `$` — PCRE's `$` also
+  matches before a trailing newline (that was a real hole in 1.0.x).
 - `SubjectIdMiddleware`: pre-set attribute (logged-in `userId`) wins → no cookie;
-  else reuse `ab_id` cookie (only when it matches `/^[0-9a-f]{32}$/` — foreign
+  else reuse `ab_id` cookie (only when the generator accepts it — foreign
   values are regenerated); else generate + set a long-lived `HttpOnly`,
   `SameSite=Lax` cookie. Cookie TTL uses `Max-Age` (a `DateInterval`), so no clock
   dependency. `process()` declares `@throws \Random\RandomException`.

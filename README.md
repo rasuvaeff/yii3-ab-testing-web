@@ -48,7 +48,7 @@ exposes it as a request attribute (`ab.subjectId` by default):
 
 1. if the attribute is already set (an upstream auth middleware put `userId` there)
    it is kept — no cookie;
-2. otherwise the `ab_id` cookie is reused — only when its value matches the generated format (32 lowercase hex chars); a tampered or oversized value is discarded and regenerated;
+2. otherwise the `ab_id` cookie is reused — only when the `SubjectIdGeneratorInterface` recognises the value as its own (32 lowercase hex chars by default); a tampered or oversized value is discarded and regenerated;
 3. otherwise a new opaque id is generated and a long-lived `HttpOnly`,
    `SameSite=Lax` cookie is set.
 
@@ -63,6 +63,44 @@ $assignment = $ab->assign(experiment: 'checkout-button', subjectId: $subjectId);
 ```
 
 For most experiments this is all you need.
+### Custom subject id format
+
+The id format and the check that accepts it back from the cookie are one
+contract, `SubjectIdGeneratorInterface`. The default `HexSubjectIdGenerator`
+produces 32 lowercase hex characters and accepts nothing else:
+
+```php
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdGeneratorInterface;
+
+final readonly class PrefixedSubjectIdGenerator implements SubjectIdGeneratorInterface
+{
+    public function generate(): string
+    {
+        return 'sub_' . bin2hex(random_bytes(8));
+    }
+
+    public function isValid(string $id): bool
+    {
+        return preg_match('/^sub_[0-9a-f]{16}\z/', $id) === 1;
+    }
+}
+
+$middleware = new SubjectIdMiddleware(idGenerator: new PrefixedSubjectIdGenerator());
+```
+
+Implement both halves or the middleware rejects its own cookie on the next
+request, mints a fresh id every time and — assignment being deterministic in
+the subject id — flips the visitor between variants on every page view.
+
+`isValid()` is a security boundary, not a formality: the cookie is
+attacker-controlled and whatever passes becomes the subject id in your logs and
+analytics. Anchor the pattern with `\z`, not `$` — PCRE's `$` also matches
+before a trailing newline.
+
+To tie the id to the logged-in user, no generator is needed: an upstream
+middleware that sets the `ab.subjectId` attribute wins over both cookie and
+generator (rule 1 above), so the same person keeps one variant across devices.
+
 
 ## Sticky variants
 
@@ -119,6 +157,8 @@ the experiment is re-assigned.
 | Class | Description |
 |---|---|
 | `SubjectIdMiddleware` | PSR-15 middleware; stable subject id + `ab_id` cookie |
+| `SubjectIdGeneratorInterface` | `generate()` + `isValid()`: the id format and the check that accepts it back |
+| `HexSubjectIdGenerator` | default: 32 lowercase hex characters |
 | `CookieAssignmentStore` | `AssignmentStore` over one signed cookie; `fromRequest()` / `applyToResponse()` |
 | `StickyAssignmentResolver` | get-or-assign over `AbTesting` + any `AssignmentStore` |
 
