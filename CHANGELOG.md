@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.0 — 2026-07-25
+
+- **Security fix.** The `ab_id` cookie was validated with `/^[0-9a-f]{32}$/`,
+  and PCRE's `$` also matches before a trailing newline — so a cookie of 32 hex
+  characters plus `\n` was accepted and became the subject id in logs and
+  analytics, exactly what the check exists to prevent. The pattern is now
+  anchored with `\z`.
+- The subject id format is now an extension point: `SubjectIdGeneratorInterface`
+  (`generate()` + `isValid()`), defaulting to `HexSubjectIdGenerator` — the
+  historical 32 lowercase hex characters, so existing visitors keep their
+  variant. `SubjectIdMiddleware`'s new `idGenerator` argument is last and
+  optional.
+- Generation and validation deliberately live in one contract: the middleware
+  reuses a cookie only when the generator accepts it, so a custom format that
+  changed only `generate()` would make every request mint a new id and — since
+  assignment is deterministic in the subject id — flip the visitor between
+  variants on every page view.
+
 ## 1.0.2 — 2026-06-30
 
 - Add `/benchmarks` and `/Makefile` to `.gitattributes` export-ignore.

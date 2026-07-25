@@ -51,9 +51,10 @@ composer require rasuvaeff/yii3-ab-testing-web
 
 1. если атрибут уже установлен (upstream auth-middleware положил туда `userId`)
    — он сохраняется, cookie не выставляется;
-2. иначе переиспользуется cookie `ab_id` — только если её значение соответствует
-   ожидаемому формату (32 шестнадцатеричных символа в нижнем регистре);
-   подделанное или слишком длинное значение отбрасывается и генерируется заново;
+2. иначе переиспользуется cookie `ab_id` — только если её значение признаёт
+   своим `SubjectIdGeneratorInterface` (по умолчанию — 32 шестнадцатеричных
+   символа в нижнем регистре); подделанное или слишком длинное значение
+   отбрасывается и генерируется заново;
 3. иначе генерируется новый непрозрачный id и выставляется долговечной cookie с
    флагами `HttpOnly`, `SameSite=Lax`.
 
@@ -66,6 +67,45 @@ $middleware = new SubjectIdMiddleware(); // defaults: cookie 'ab_id', attribute 
 $subjectId = $request->getAttribute('ab.subjectId');
 $assignment = $ab->assign(experiment: 'checkout-button', subjectId: $subjectId);
 ```
+
+### Свой формат subject id
+
+Формат id и проверка, по которой он принимается обратно из cookie, — это один
+контракт, `SubjectIdGeneratorInterface`. `HexSubjectIdGenerator` по умолчанию
+выдаёт 32 hex-символа в нижнем регистре и не принимает ничего другого:
+
+```php
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdGeneratorInterface;
+
+final readonly class PrefixedSubjectIdGenerator implements SubjectIdGeneratorInterface
+{
+    public function generate(): string
+    {
+        return 'sub_' . bin2hex(random_bytes(8));
+    }
+
+    public function isValid(string $id): bool
+    {
+        return preg_match('/^sub_[0-9a-f]{16}\z/', $id) === 1;
+    }
+}
+
+$middleware = new SubjectIdMiddleware(idGenerator: new PrefixedSubjectIdGenerator());
+```
+
+Реализуйте обе половины, иначе middleware будет отвергать собственную cookie на
+следующем же запросе, каждый раз выдавать новый id и — поскольку назначение
+детерминированно зависит от subject id — перекидывать посетителя между
+вариантами на каждой странице.
+
+`isValid()` — граница безопасности, а не формальность: cookie контролируется
+клиентом, и всё, что пройдёт проверку, станет subject id в ваших логах и
+аналитике. Якорьте паттерн через `\z`, а не `$`: в PCRE `$` совпадает и перед
+завершающим переводом строки.
+
+Чтобы привязать id к залогиненному пользователю, генератор не нужен: upstream
+middleware, выставивший атрибут `ab.subjectId`, побеждает и cookie, и генератор
+(правило 1 выше) — так один человек сохраняет один вариант на всех устройствах.
 
 Для большинства экспериментов этого достаточно.
 
@@ -125,6 +165,8 @@ $assignment = $resolver->resolve(
 | Класс | Описание |
 |---|---|
 | `SubjectIdMiddleware` | PSR-15 middleware; стабильный subject id + cookie `ab_id` |
+| `SubjectIdGeneratorInterface` | `generate()` + `isValid()`: формат id и проверка, принимающая его обратно |
+| `HexSubjectIdGenerator` | по умолчанию: 32 hex-символа в нижнем регистре |
 | `CookieAssignmentStore` | `AssignmentStore` поверх одной подписанной cookie; `fromRequest()` / `applyToResponse()` |
 | `StickyAssignmentResolver` | get-or-assign поверх `AbTesting` + любого `AssignmentStore` |
 

@@ -83,6 +83,47 @@ final class SubjectIdMiddlewareTest
         Assert::true($response->hasHeader('Set-Cookie'));
     }
 
+    public function customGeneratorMintsTheId(): void
+    {
+        $handler = new CapturingHandler(new Response());
+        $middleware = new SubjectIdMiddleware(idGenerator: new PrefixedSubjectIdGenerator());
+
+        $response = $middleware->process(new ServerRequest('GET', '/'), $handler);
+
+        Assert::same($handler->received?->getAttribute('ab.subjectId'), 'sub_0001');
+        Assert::string($response->getHeaderLine('Set-Cookie'))->contains('ab_id=sub_0001');
+    }
+
+    public function customGeneratorAlsoDecidesWhichCookieValuesAreReused(): void
+    {
+        // the trap this guards: if validation stayed hard-coded to 32 hex chars,
+        // the middleware would reject its own cookie on every request, mint a new
+        // id each time and — assignment being deterministic in the subject id —
+        // flip the visitor between variants on every page view
+        $generator = new PrefixedSubjectIdGenerator();
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))->withCookieParams(['ab_id' => 'sub_0007']);
+
+        $response = (new SubjectIdMiddleware(idGenerator: $generator))->process($request, $handler);
+
+        Assert::same($handler->received?->getAttribute('ab.subjectId'), 'sub_0007');
+        Assert::false($response->hasHeader('Set-Cookie'));
+        Assert::same($generator->calls, 0);
+    }
+
+    public function customGeneratorRejectsTheDefaultFormat(): void
+    {
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))
+            ->withCookieParams(['ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']);
+
+        $response = (new SubjectIdMiddleware(idGenerator: new PrefixedSubjectIdGenerator()))
+            ->process($request, $handler);
+
+        Assert::same($handler->received?->getAttribute('ab.subjectId'), 'sub_0001');
+        Assert::true($response->hasHeader('Set-Cookie'));
+    }
+
     public function leavesPreSetAttributeUntouchedAndSetsNoCookie(): void
     {
         $handler = new CapturingHandler(new Response());
