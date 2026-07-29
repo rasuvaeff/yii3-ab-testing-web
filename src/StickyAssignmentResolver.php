@@ -15,9 +15,12 @@ use Rasuvaeff\Yii3AbTesting\AssignmentStore;
  * changes. Keeps {@see AbTesting::assign()} pure — the sticky layer lives here.
  *
  * Rules:
- *  - A forced variant always bypasses the store (QA override).
  *  - A disabled experiment returns its fallback and never reads or writes the
  *    store, so the kill switch always takes effect.
+ *  - In an enabled experiment, a forced variant bypasses targeting and the
+ *    store (QA override).
+ *  - A targeting mismatch returns the core fallback and never reads or writes
+ *    the store, so a previous sticky assignment cannot bypass targeting.
  *  - A stored variant is reused only while it is still a variant of the
  *    experiment; if it was removed, a fresh variant is assigned and stored.
  *  - Fallback results are not stored.
@@ -38,6 +41,16 @@ final readonly class StickyAssignmentResolver
         ?string $forcedVariant = null,
         ?AssignmentContext $context = null,
     ): Assignment {
+        $definition = $this->abTesting->getRegistry()->get($experiment);
+
+        if (!$definition->enabled) {
+            return $this->abTesting->assign(
+                experiment: $experiment,
+                subjectId: $subjectId,
+                context: $context,
+            );
+        }
+
         if ($forcedVariant !== null) {
             return $this->abTesting->assign(
                 experiment: $experiment,
@@ -47,31 +60,29 @@ final readonly class StickyAssignmentResolver
             );
         }
 
-        $definition = $this->abTesting->getRegistry()->get($experiment);
-
-        if ($definition->enabled) {
-            $stored = $this->store->get($experiment, $subjectId);
-
-            if ($stored !== null && isset($definition->variants[$stored])) {
-                return new Assignment(
-                    experiment: $experiment,
-                    variant: $stored,
-                    subjectId: $subjectId,
-                    context: $context,
-                    isSticky: true,
-                );
-            }
-        }
-
         $assignment = $this->abTesting->assign(
             experiment: $experiment,
             subjectId: $subjectId,
             context: $context,
         );
 
-        if (!$assignment->isFallback) {
-            $this->store->put($experiment, $subjectId, $assignment->variant);
+        if ($assignment->isFallback) {
+            return $assignment;
         }
+
+        $stored = $this->store->get($experiment, $subjectId);
+
+        if ($stored !== null && isset($definition->variants[$stored])) {
+            return new Assignment(
+                experiment: $experiment,
+                variant: $stored,
+                subjectId: $subjectId,
+                context: $context,
+                isSticky: true,
+            );
+        }
+
+        $this->store->put($experiment, $subjectId, $assignment->variant);
 
         return $assignment;
     }

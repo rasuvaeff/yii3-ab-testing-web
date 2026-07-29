@@ -30,7 +30,7 @@ omission, not a gap. Wire the pieces in your application (see README).
    unsigned, tampered, or malformed cookie yields an empty store, never a partial
    or attacker-controlled map. The subject id is opaque (`random_bytes`, not a
    UUID) and holds no PII, but it is a persistent identifier — honour consent.
-4. **Preserve the public contract.** Update README + tests with any API change.
+4. **Preserve the public contract.** Update both READMEs + tests with any API change.
 
 ## Commands
 
@@ -62,7 +62,7 @@ make release-check
 
 ## Invariants & gotchas
 
-- Requires core `^1.2` (`AssignmentStore`, `Assignment::isSticky`). Resolves from
+- Requires core `^1.4` (targeting rules and mismatch metadata). Resolves from
   Packagist; no path repository needed.
 - **`SubjectIdGeneratorInterface` owns BOTH generation and validation.** They
   cannot be split: the middleware reuses a cookie only when `isValid()` accepts
@@ -82,10 +82,12 @@ make release-check
   variants stored under their anonymous identity — intentional, documented.
   `prune(ExperimentRegistry)` drops entries of removed experiments; call it before
   `applyToResponse()` (rewrite happens only when something changed).
-- `StickyAssignmentResolver`: forced variant bypasses the store; a disabled
-  experiment returns its fallback and never reads/writes the store (kill switch
-  always wins); a stored variant is reused only while it is still a variant of the
-  experiment (and is served with `isSticky = true`); fallbacks are not stored.
+- `StickyAssignmentResolver` precedence: disabled returns fallback before forced
+  or sticky resolution (kill switch always wins); forced on an enabled experiment
+  bypasses targeting/store; otherwise targeting is evaluated before store access,
+  and mismatch returns fallback without reading/writing sticky data. A stored
+  variant is reused only while it remains in the experiment (`isSticky = true`);
+  fallbacks are not stored.
 - Tests use `nyholm/psr7` for PSR-7 messages and a real `Yiisoft\Cookies\CookieSigner`.
 - Code: `declare(strict_types=1)`; `SubjectIdMiddleware`/`StickyAssignmentResolver`
   are `final readonly`, `CookieAssignmentStore` is `final` (mutable variant map);
@@ -101,7 +103,7 @@ make release-check
 
 ## When you finish
 
-- Update `README.md` (and `examples/` if usage changed); update `CHANGELOG.md`
-  when releasing.
+- Update `README.md` and `README.ru.md` together (and `examples/` if usage
+  changed); update `CHANGELOG.md` when releasing.
 - Re-run `composer build`; if the change affects public API or release safety,
   also run `make release-check`. Paste the output.

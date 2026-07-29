@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1 — 2026-07-29
+
+- Evaluate enabled state and targeting before reading sticky assignments, so a
+  previous variant cannot bypass the kill switch or current eligibility.
+- Make disabled experiments win over forced variants in sticky resolution.
+- Add regression coverage for changed `country`/`plan`, disabled and forced
+  combinations, and stale stored variants.
+- Correct the core Composer requirement from `^1.2` to `^1.4`; targeting APIs
+  used since web 1.1.0 were introduced in core 1.4.
+
 ## 1.1.0 — 2026-07-25
 
 - **Security fix.** The `ab_id` cookie was validated with `/^[0-9a-f]{32}$/`,
@@ -41,4 +51,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CookieAssignmentStore` — sticky-variant `AssignmentStore` backed by one signed cookie; request-scoped via `fromRequest()` / `applyToResponse()`.
 - `StickyAssignmentResolver` — get-or-assign resolver over `AbTesting` and any `AssignmentStore`; forced variant bypasses the store, disabled experiments return fallback, stale stored variants are re-assigned.
 - Requires `rasuvaeff/yii3-ab-testing` ^1.2 (`AssignmentStore`, `Assignment::isSticky`).
-
