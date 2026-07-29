@@ -17,7 +17,7 @@ need it, pins a subject to a variant across weight changes via a signed cookie.
 ## Requirements
 
 - PHP 8.3+
-- `rasuvaeff/yii3-ab-testing` ^1.2 (adds `AssignmentStore` and `Assignment::isSticky`)
+- `rasuvaeff/yii3-ab-testing` ^1.4 (adds targeting rules and mismatch metadata)
 - `yiisoft/cookies` ^1.2
 - a PSR-7 implementation (e.g. `nyholm/psr7`) and a PSR-15 stack
 
@@ -147,10 +147,13 @@ $assignment = $resolver->resolve(
 // first time: assigned and stored; later: the stored variant is returned
 ```
 
-`StickyAssignmentResolver` keeps `AbTesting::assign()` pure: a forced variant
-bypasses the store, a disabled experiment returns its fallback (the kill switch
-always wins and nothing is stored), and a stored variant that is no longer part of
-the experiment is re-assigned.
+`StickyAssignmentResolver` keeps `AbTesting::assign()` pure and applies decisions
+in a strict order. A disabled experiment returns its fallback before any forced or
+sticky assignment, so the kill switch always wins. For an enabled experiment, a
+forced variant bypasses targeting and the store. Otherwise core targeting is
+evaluated before the store: a mismatch returns the fallback without reading or
+writing sticky data. Only an eligible subject can reuse a stored variant; a stored
+variant that is no longer part of the experiment is re-assigned.
 
 ## API reference
 

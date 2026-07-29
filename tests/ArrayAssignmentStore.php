@@ -19,6 +19,11 @@ final class ArrayAssignmentStore implements AssignmentStore
     public array $stored = [];
 
     /**
+     * @var list<array{experiment: string, subjectId: string}>
+     */
+    public array $gets = [];
+
+    /**
      * @var list<array{experiment: string, subjectId: string, variant: string}>
      */
     public array $puts = [];
@@ -26,6 +31,8 @@ final class ArrayAssignmentStore implements AssignmentStore
     #[\Override]
     public function get(string $experiment, string $subjectId): ?string
     {
+        $this->gets[] = ['experiment' => $experiment, 'subjectId' => $subjectId];
+
         return $this->stored[$experiment] ?? null;
     }
 

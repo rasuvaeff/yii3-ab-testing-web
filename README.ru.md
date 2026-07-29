@@ -19,7 +19,7 @@
 ## Требования
 
 - PHP 8.3+
-- `rasuvaeff/yii3-ab-testing` ^1.2 (добавляет `AssignmentStore` и `Assignment::isSticky`)
+- `rasuvaeff/yii3-ab-testing` ^1.4 (добавляет targeting rules и mismatch metadata)
 - `yiisoft/cookies` ^1.2
 - реализация PSR-7 (например `nyholm/psr7`) и PSR-15 стек
 
@@ -155,10 +155,13 @@ $assignment = $resolver->resolve(
 // first time: assigned and stored; later: the stored variant is returned
 ```
 
-`StickyAssignmentResolver` сохраняет чистоту `AbTesting::assign()`: форсированный
-вариант обходит store, отключённый эксперимент возвращает fallback (kill switch
-всегда побеждает и ничего не сохраняется), а сохранённый вариант, который больше
-не входит в набор эксперимента, назначается заново.
+`StickyAssignmentResolver` сохраняет чистоту `AbTesting::assign()` и применяет
+решения в строгом порядке. Отключённый эксперимент возвращает fallback до любого
+forced- или sticky-назначения, поэтому kill switch всегда побеждает. В активном
+эксперименте forced-вариант обходит targeting и store. В остальных случаях core
+проверяет targeting до обращения к store: mismatch возвращает fallback без чтения
+или записи sticky-данных. Только eligible subject может получить сохранённый
+вариант; вариант, который больше не входит в эксперимент, назначается заново.
 
 ## API reference
 
