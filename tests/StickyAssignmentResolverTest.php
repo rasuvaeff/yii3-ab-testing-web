@@ -6,7 +6,9 @@ namespace Rasuvaeff\Yii3AbTestingWeb\Tests;
 
 use Rasuvaeff\Yii3AbTesting\AbTesting;
 use Rasuvaeff\Yii3AbTesting\AndTargetingRule;
+use Rasuvaeff\Yii3AbTesting\Assignment;
 use Rasuvaeff\Yii3AbTesting\AssignmentContext;
+use Rasuvaeff\Yii3AbTesting\AssignmentResolver;
 use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
 use Rasuvaeff\Yii3AbTesting\ConfigExperimentProvider;
 use Rasuvaeff\Yii3AbTesting\Exception\InvalidExperimentException;
@@ -51,7 +53,7 @@ final class StickyAssignmentResolverTest
             strategy: new WeightedHashAssignmentStrategy(),
         );
         $this->store = new ArrayAssignmentStore();
-        $this->resolver = new StickyAssignmentResolver(abTesting: $this->abTesting, store: $this->store);
+        $this->resolver = new StickyAssignmentResolver(resolver: $this->abTesting, store: $this->store);
     }
 
     public function assignsFreshAndStoresWhenNothingStored(): void
@@ -194,6 +196,32 @@ final class StickyAssignmentResolverTest
         Assert::count($this->store->puts, 1);
     }
 
+    public function aNonCoreResolverKeepsItsStoredVariantUnchecked(): void
+    {
+        // the "variant still exists" guard reads the core registry; behind any
+        // other AssignmentResolver there is nothing to check against, so the
+        // stored variant must be honoured as-is
+        $inner = new readonly class implements AssignmentResolver {
+            #[\Override]
+            public function resolve(
+                string $experiment,
+                string $subjectId,
+                ?string $forcedVariant = null,
+                ?AssignmentContext $context = null,
+            ): Assignment {
+                return new Assignment(experiment: $experiment, variant: 'control', subjectId: $subjectId);
+            }
+        };
+        $store = new ArrayAssignmentStore();
+        $store->stored['checkout-button'] = 'variant-from-another-system';
+
+        $assignment = (new StickyAssignmentResolver(resolver: $inner, store: $store))
+            ->resolve(experiment: 'checkout-button', subjectId: 'user-1');
+
+        Assert::same($assignment->variant, 'variant-from-another-system');
+        Assert::true($assignment->isSticky);
+    }
+
     public function throwsForUnknownExperiment(): void
     {
         Expect::exception(InvalidExperimentException::class);
@@ -224,7 +252,7 @@ final class StickyAssignmentResolverTest
         };
 
         return new StickyAssignmentResolver(
-            abTesting: new AbTesting(
+            resolver: new AbTesting(
                 provider: $provider,
                 strategy: new WeightedHashAssignmentStrategy(),
             ),

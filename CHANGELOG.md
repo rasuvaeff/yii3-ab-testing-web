@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0 — 2026-08-01
+
+- Add ready `StickyAssignmentMiddleware` and typed request accessors for subject
+  identity, sticky resolver, and cookie store.
+- Add consent policies; denied consent now uses an ephemeral request id and
+  prevents identity and sticky-cookie reads and writes.
+- Add configurable anonymous-to-authenticated transitions: use the authenticated
+  id afresh, keep the anonymous id, or migrate browser assignments.
+- Bound sticky cookies by entry count and actual `Set-Cookie` bytes with
+  deterministic FIFO eviction and oversized-input rejection.
+- Persist core `configurationId` with sticky assignments so changed experiment
+  definitions invalidate old variants while retaining v1 cookie readability.
+- Require `rasuvaeff/yii3-ab-testing` ^1.6 and implement its
+  `AssignmentResolver` contract.
+
 ## 1.1.1 — 2026-07-29
 
 - Evaluate enabled state and targeting before reading sticky assignments, so a

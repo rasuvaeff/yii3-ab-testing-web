@@ -10,10 +10,12 @@ the core `AssignmentStore`. Namespace: `Rasuvaeff\Yii3AbTestingWeb`.
 
 Public API:
 - `SubjectIdMiddleware` — establishes `subjectId` (cookie `ab_id` or an upstream
-  attribute) and exposes it as a request attribute.
+  attribute) and exposes typed + legacy request attributes.
+- `StickyAssignmentMiddleware` — ready request-scoped PSR-15 integration.
 - `CookieAssignmentStore implements AssignmentStore` — sticky variants in one
   signed cookie; request-scoped (`fromRequest()` / `applyToResponse()`).
-- `StickyAssignmentResolver` — get-or-assign over `AbTesting` + any `AssignmentStore`.
+- `StickyAssignmentResolver` — core `AssignmentResolver` decorator over another
+  resolver + any `AssignmentStore`.
 
 **No config-plugin (`config/di.php`).** A cookie store is request-scoped and cannot
 be a DI singleton, and middleware are added to the application's middleware stack
@@ -62,7 +64,7 @@ make release-check
 
 ## Invariants & gotchas
 
-- Requires core `^1.4` (targeting rules and mismatch metadata). Resolves from
+- Requires core `^1.6` (`AssignmentResolver` and configuration ids). Resolves from
   Packagist; no path repository needed.
 - **`SubjectIdGeneratorInterface` owns BOTH generation and validation.** They
   cannot be split: the middleware reuses a cookie only when `isValid()` accepts
@@ -72,16 +74,18 @@ make release-check
   cookie is attacker-controlled and whatever passes becomes the subject id in
   logs and analytics. Anchor patterns with `\z`, never `$` — PCRE's `$` also
   matches before a trailing newline (that was a real hole in 1.0.x).
-- `SubjectIdMiddleware`: pre-set attribute (logged-in `userId`) wins → no cookie;
-  else reuse `ab_id` cookie (only when the generator accepts it — foreign
-  values are regenerated); else generate + set a long-lived `HttpOnly`,
-  `SameSite=Lax` cookie. Cookie TTL uses `Max-Age` (a `DateInterval`), so no clock
-  dependency. `process()` declares `@throws \Random\RandomException`.
+- `SubjectIdMiddleware`: consent is checked before reading or writing `ab_id`;
+  denied consent gets a request-only ephemeral id. Auth transitions are explicit
+  (`UseAuthenticatedId`, `KeepAnonymousId`, `MigrateAssignments`). Cookie TTL
+  uses `Max-Age`, so there is no clock dependency.
 - `CookieAssignmentStore` is browser-scoped: the `$subjectId` argument is ignored
-  (the cookie identifies the subject). An anonymous→logged-in visitor keeps the
-  variants stored under their anonymous identity — intentional, documented.
+  (the cookie identifies the subject). It is capped by entries and actual
+  `Set-Cookie` bytes; deterministic eviction is FIFO and updating an entry moves
+  it to newest. Never remove either limit or decode an oversized input.
   `prune(ExperimentRegistry)` drops entries of removed experiments; call it before
   `applyToResponse()` (rewrite happens only when something changed).
+- Configuration-aware cookie entries carry core `configurationId`; retain v1
+  string-map decoding, but never reuse an entry for a different configuration.
 - `StickyAssignmentResolver` precedence: disabled returns fallback before forced
   or sticky resolution (kill switch always wins); forced on an enabled experiment
   bypasses targeting/store; otherwise targeting is evaluated before store access,

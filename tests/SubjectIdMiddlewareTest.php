@@ -6,7 +6,11 @@ namespace Rasuvaeff\Yii3AbTestingWeb\Tests;
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
+use Rasuvaeff\Yii3AbTestingWeb\AnonymousToAuthenticatedStrategy;
+use Rasuvaeff\Yii3AbTestingWeb\CallbackConsentPolicy;
 use Rasuvaeff\Yii3AbTestingWeb\SubjectIdMiddleware;
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdRequestAccessor;
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdSource;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
@@ -146,5 +150,100 @@ final class SubjectIdMiddlewareTest
 
         Assert::same($handler->received?->getAttribute('subject'), 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
         Assert::false($response->hasHeader('Set-Cookie'));
+    }
+
+    public function consentDenialCreatesOnlyAnEphemeralId(): void
+    {
+        $handler = new CapturingHandler(new Response());
+        $policy = new CallbackConsentPolicy(static fn(ServerRequest $request): bool => false);
+        $request = (new ServerRequest('GET', '/'))->withCookieParams([
+            'ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+        ]);
+
+        $response = (new SubjectIdMiddleware(consentPolicy: $policy))->process($request, $handler);
+        $subjectId = (new SubjectIdRequestAccessor())->require($handler->received ?? $request);
+
+        Assert::same($subjectId->source, SubjectIdSource::Ephemeral);
+        Assert::false($response->hasHeader('Set-Cookie'));
+        Assert::false($subjectId->value === 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
+    }
+
+    public function defaultTransitionMigratesAnonymousAssignmentsToAuthenticatedId(): void
+    {
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))
+            ->withAttribute('ab.subjectId', 'user-42')
+            ->withCookieParams(['ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']);
+
+        (new SubjectIdMiddleware())->process($request, $handler);
+        $subjectId = (new SubjectIdRequestAccessor())->require($handler->received ?? $request);
+
+        Assert::same($subjectId->value, 'user-42');
+        Assert::same($subjectId->source, SubjectIdSource::Authenticated);
+        Assert::true($subjectId->preserveAnonymousAssignments);
+    }
+
+    public function transitionCanStartFreshWithAuthenticatedId(): void
+    {
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))
+            ->withAttribute('ab.subjectId', 'user-42')
+            ->withCookieParams(['ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']);
+
+        (new SubjectIdMiddleware(
+            identityTransition: AnonymousToAuthenticatedStrategy::UseAuthenticatedId,
+        ))->process($request, $handler);
+        $subjectId = (new SubjectIdRequestAccessor())->require($handler->received ?? $request);
+
+        Assert::same($subjectId->value, 'user-42');
+        Assert::false($subjectId->preserveAnonymousAssignments);
+    }
+
+    public function transitionCanKeepAnonymousIdAfterAuthentication(): void
+    {
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))
+            ->withAttribute('ab.subjectId', 'user-42')
+            ->withCookieParams(['ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']);
+
+        (new SubjectIdMiddleware(
+            identityTransition: AnonymousToAuthenticatedStrategy::KeepAnonymousId,
+        ))->process($request, $handler);
+        $subjectId = (new SubjectIdRequestAccessor())->require($handler->received ?? $request);
+
+        Assert::same($subjectId->value, 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
+        Assert::same($subjectId->source, SubjectIdSource::Anonymous);
+    }
+
+    public function authenticatedIdWithoutAnAnonymousCookieNeedsNoTransition(): void
+    {
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))->withAttribute('ab.subjectId', 'user-42');
+
+        (new SubjectIdMiddleware())->process($request, $handler);
+        $subjectId = (new SubjectIdRequestAccessor())->require($handler->received ?? $request);
+
+        Assert::same($subjectId->value, 'user-42');
+        Assert::same($subjectId->source, SubjectIdSource::Authenticated);
+        Assert::false($subjectId->preserveAnonymousAssignments);
+    }
+
+    public function anAnonymousCookieIdentityIsNeverTransitioned(): void
+    {
+        // only an *authenticated* upstream identity triggers a transition; a
+        // returning anonymous visitor must keep the exact cookie id, otherwise
+        // the deterministic assignment flips on every request
+        $handler = new CapturingHandler(new Response());
+        $request = (new ServerRequest('GET', '/'))
+            ->withCookieParams(['ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']);
+
+        (new SubjectIdMiddleware(
+            identityTransition: AnonymousToAuthenticatedStrategy::UseAuthenticatedId,
+        ))->process($request, $handler);
+        $subjectId = (new SubjectIdRequestAccessor())->require($handler->received ?? $request);
+
+        Assert::same($subjectId->value, 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
+        Assert::same($subjectId->source, SubjectIdSource::Anonymous);
+        Assert::false($subjectId->preserveAnonymousAssignments);
     }
 }

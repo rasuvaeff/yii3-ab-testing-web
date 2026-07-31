@@ -19,7 +19,7 @@
 ## Требования
 
 - PHP 8.3+
-- `rasuvaeff/yii3-ab-testing` ^1.4 (добавляет targeting rules и mismatch metadata)
+- `rasuvaeff/yii3-ab-testing` ^1.6 (`AssignmentResolver` и configuration ids)
 - `yiisoft/cookies` ^1.2
 - реализация PSR-7 (например `nyholm/psr7`) и PSR-15 стек
 
@@ -39,7 +39,7 @@ composer require rasuvaeff/yii3-ab-testing-web
 | Задача | Использовать |
 |---|---|
 | Стабильный id для анонимных посетителей | `SubjectIdMiddleware` (cookie `ab_id`) |
-| Удерживать вариант даже после изменения весов/набора вариантов | `CookieAssignmentStore` + `StickyAssignmentResolver` |
+| Удерживать вариант между запросами | `StickyAssignmentMiddleware` |
 
 У залогиненного пользователя уже есть стабильный id (`userId`) — установите его
 как атрибут запроса выше по pipeline, и middleware его не тронет.
@@ -47,7 +47,8 @@ composer require rasuvaeff/yii3-ab-testing-web
 ## Middleware идентификации субъекта
 
 Добавьте `SubjectIdMiddleware` в PSR-15 стек. Он вычисляет subject id и
-предоставляет его как атрибут запроса (по умолчанию `ab.subjectId`):
+предоставляет его через `SubjectIdRequestAccessor` (исторический строковый
+атрибут `ab.subjectId` сохраняется для совместимости):
 
 1. если атрибут уже установлен (upstream auth-middleware положил туда `userId`)
    — он сохраняется, cookie не выставляется;
@@ -55,17 +56,48 @@ composer require rasuvaeff/yii3-ab-testing-web
    своим `SubjectIdGeneratorInterface` (по умолчанию — 32 шестнадцатеричных
    символа в нижнем регистре); подделанное или слишком длинное значение
    отбрасывается и генерируется заново;
-3. иначе генерируется новый непрозрачный id и выставляется долговечной cookie с
-   флагами `HttpOnly`, `SameSite=Lax`.
+3. иначе генерируется новый непрозрачный id; долговечная cookie с флагами
+   `HttpOnly`, `SameSite=Lax` выставляется только когда consent policy разрешает
+   постоянное хранение.
 
 ```php
+use Rasuvaeff\Yii3AbTestingWeb\CallbackConsentPolicy;
 use Rasuvaeff\Yii3AbTestingWeb\SubjectIdMiddleware;
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdRequestAccessor;
 
-$middleware = new SubjectIdMiddleware(); // defaults: cookie 'ab_id', attribute 'ab.subjectId'
+$consent = new CallbackConsentPolicy(
+    static fn ($request): bool => $request->getAttribute('analyticsConsent') === true,
+);
+$middleware = new SubjectIdMiddleware(consentPolicy: $consent);
 
 // in your action/handler:
-$subjectId = $request->getAttribute('ab.subjectId');
-$assignment = $ab->assign(experiment: 'checkout-button', subjectId: $subjectId);
+$subjectId = (new SubjectIdRequestAccessor())->require($request);
+$assignment = $ab->resolve(experiment: 'checkout-button', subjectId: $subjectId->value);
+```
+
+До согласия входящие identity- и assignment-cookie игнорируются, свежий id с
+`SubjectIdSource::Ephemeral` живёт только в запросе, cookie не записываются.
+`AllowAllConsentPolicy` остаётся default для обратной совместимости; приложения,
+где требуется согласие, передают одну policy в оба middleware.
+
+### Переход от anonymous к authenticated identity
+
+Настройте `identityTransition`, когда auth-middleware передал `ab.subjectId`, а
+в браузере уже есть anonymous-cookie `ab_id`:
+
+| Стратегия | Subject id после входа | Существующие browser assignments |
+|---|---|---|
+| `MigrateAssignments` (default) | authenticated id | сохраняются |
+| `UseAuthenticatedId` | authenticated id | отбрасываются и создаются заново |
+| `KeepAnonymousId` | anonymous cookie id | сохраняются |
+
+```php
+use Rasuvaeff\Yii3AbTestingWeb\AnonymousToAuthenticatedStrategy;
+
+$middleware = new SubjectIdMiddleware(
+    consentPolicy: $consent,
+    identityTransition: AnonymousToAuthenticatedStrategy::UseAuthenticatedId,
+);
 ```
 
 ### Свой формат subject id
@@ -111,81 +143,79 @@ middleware, выставивший атрибут `ab.subjectId`, побежда
 
 ## Sticky-варианты
 
-Изменение весов или набора вариантов сдвигает границы бакетов и перетасовывает
-субъектов. Чтобы зафиксировать субъекта при таких изменениях, резолвите через
-`CookieAssignmentStore` (подписанная cookie `{experiment: variant}`) и
-`StickyAssignmentResolver`. Поскольку store имеет request-scope lifetime,
-оберните его в тонкое middleware, которое читает cookie, предоставляет store и
-пишет её обратно:
+Используйте готовый PSR-15 `StickyAssignmentMiddleware` после
+`SubjectIdMiddleware`. Он создаёт request-scoped `CookieAssignmentStore`,
+предоставляет `AssignmentResolver` и применяет изменённые назначения к response:
 
 ```php
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
-use Rasuvaeff\Yii3AbTestingWeb\CookieAssignmentStore;
+use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentMiddleware;
 use Yiisoft\Cookies\CookieSigner;
 
-final class StickyCookieMiddleware implements MiddlewareInterface
-{
-    public function __construct(private CookieSigner $signer) {}
-
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
-    {
-        $store = CookieAssignmentStore::fromRequest($request, $this->signer);
-        $response = $handler->handle($request->withAttribute('ab.store', $store));
-
-        return $store->applyToResponse($response);
-    }
-}
+$identityMiddleware = new SubjectIdMiddleware(consentPolicy: $consent);
+$stickyMiddleware = new StickyAssignmentMiddleware(
+    resolver: $ab,
+    signer: new CookieSigner($secretKey),
+    consentPolicy: $consent,
+    maxEntries: 50,
+    maxCookieBytes: 3800,
+);
 ```
 
 Затем в действии:
 
 ```php
-use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentResolver;
+use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentRequestAccessor;
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdRequestAccessor;
 
-$store = $request->getAttribute('ab.store');                 // CookieAssignmentStore
-$resolver = new StickyAssignmentResolver($ab, $store);
+$subjectId = (new SubjectIdRequestAccessor())->require($request);
+$resolver = (new StickyAssignmentRequestAccessor())->resolver($request);
 
 $assignment = $resolver->resolve(
     experiment: 'checkout-button',
-    subjectId: $request->getAttribute('ab.subjectId'),
+    subjectId: $subjectId->value,
 );
-// first time: assigned and stored; later: the stored variant is returned
 ```
 
-`StickyAssignmentResolver` сохраняет чистоту `AbTesting::assign()` и применяет
-решения в строгом порядке. Отключённый эксперимент возвращает fallback до любого
-forced- или sticky-назначения, поэтому kill switch всегда побеждает. В активном
-эксперименте forced-вариант обходит targeting и store. В остальных случаях core
-проверяет targeting до обращения к store: mismatch возвращает fallback без чтения
-или записи sticky-данных. Только eligible subject может получить сохранённый
-вариант; вариант, который больше не входит в эксперимент, назначается заново.
+Подписанная cookie ограничена одновременно `maxEntries` и фактическим размером
+заголовка `Set-Cookie` (`maxCookieBytes`). Eviction детерминированный FIFO;
+обновление эксперимента делает его самым новым. Слишком большие входящие cookie
+отвергаются до JSON decode. Записи несут core `configurationId`, поэтому новая
+конфигурация эксперимента инвалидирует старое sticky-назначение. Формат v1 со
+строковой map по-прежнему читается.
+
+`StickyAssignmentResolver` реализует core `AssignmentResolver`. Fallback, forced
+и targeting-решения возвращаются до обращения к store; отключённый эксперимент
+остаётся kill switch. `AbTesting::assign()` остаётся чистым.
 
 ## API reference
 
 | Класс | Описание |
 |---|---|
 | `SubjectIdMiddleware` | PSR-15 middleware; стабильный subject id + cookie `ab_id` |
+| `SubjectId`, `SubjectIdSource` | типизированная identity и её anonymous/authenticated/ephemeral источник |
+| `SubjectIdRequestAccessor` | типизированный доступ с совместимостью через `ab.subjectId` |
+| `ConsentPolicyInterface` | решение о persistence; `CallbackConsentPolicy` адаптирует application consent |
+| `AnonymousToAuthenticatedStrategy` | сохранить anonymous, использовать authenticated или мигрировать assignments |
 | `SubjectIdGeneratorInterface` | `generate()` + `isValid()`: формат id и проверка, принимающая его обратно |
 | `HexSubjectIdGenerator` | по умолчанию: 32 hex-символа в нижнем регистре |
 | `CookieAssignmentStore` | `AssignmentStore` поверх одной подписанной cookie; `fromRequest()` / `applyToResponse()` |
-| `StickyAssignmentResolver` | get-or-assign поверх `AbTesting` + любого `AssignmentStore` |
+| `ConfigurationAwareAssignmentStore` | опциональное расширение store: sticky-поиск с учётом core `configurationId` |
+| `StickyAssignmentMiddleware` | готовая PSR-15 интеграция request-scoped store и sticky resolver |
+| `StickyAssignmentRequestAccessor` | типизированный доступ к resolver и store в запросе |
+| `StickyAssignmentResolver` | декоратор `AssignmentResolver` поверх любого core resolver и store |
 
 ## Безопасность и приватность
 
 - Subject id — это непрозрачный 128-битный токен (`random_bytes`, не UUID), он
   не содержит персональных данных, но является постоянным идентификатором.
-  Выставляйте cookie только после consent там, где этого требует закон.
+  Отказ consent policy запрещает чтение и запись identity- и sticky-cookie.
 - Sticky-cookie подписана (`yiisoft/cookies` `CookieSigner`); отсутствующая,
   неподписанная, подделанная или некорректная cookie игнорируется и даёт пустой
   store — никогда частичный или контролируемый злоумышленником variant map.
   Используйте сильный ключ подписи.
 - По умолчанию cookie имеют атрибуты `HttpOnly`, `SameSite=Lax` и `Secure`.
-- Cookie привязана к браузеру: аргумент `$subjectId` у store игнорируется.
-  Посетитель, который был анонимным, а затем залогинился, сохраняет варианты,
-  назначенные его анонимной идентичностью.
+- Sticky-cookie привязана к браузеру: аргумент `$subjectId` у store игнорируется.
+  Выберите auth-transition явно согласно требованиям продукта.
 
 ## Примеры
 

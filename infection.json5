@@ -9,9 +9,16 @@
     },
     "testFramework": "testo",
     "testFrameworkOptions": "--suite=Unit",
-    // 1 equivalent mutant: CookieAssignmentStore::decode() early `return []` when
-    // `!$signer->isSigned($cookie)` — removing it lets code fall through to
-    // `validate()` which throws RuntimeException, caught and `return []` anyway.
+    // 2 equivalent mutants, both in CookieAssignmentStore:
+    //  - decode()'s early `return []` when `!$signer->isSigned($cookie)`:
+    //    removing it falls through to `validate()`, which throws
+    //    RuntimeException, is caught, and returns the same empty maps.
+    //  - toEntryMaps()'s `!is_array($entry) || !isset($entry['v'], $entry['c'])`
+    //    flipped to `&&`: `isset()` on a non-array offset is already false, so
+    //    no input separates the two operators (string entries return earlier).
+    // The eviction loops additionally produce 4 timed-out mutants (removing the
+    // eviction call leaves `while`/`do..while` spinning); infection counts those
+    // as killed.
     "minMsi": 98,
     "mutators": {
         "@default": true
