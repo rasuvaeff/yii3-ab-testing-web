@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-08-01
 
 - Add ready `StickyAssignmentMiddleware` and typed request accessors for subject
   identity, sticky resolver, and cookie store.
