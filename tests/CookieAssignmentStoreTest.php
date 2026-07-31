@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingWeb\Tests;
 
+use InvalidArgumentException;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use Psr\Http\Message\ServerRequestInterface;
@@ -12,6 +13,7 @@ use Rasuvaeff\Yii3AbTesting\ExperimentRegistry;
 use Rasuvaeff\Yii3AbTestingWeb\CookieAssignmentStore;
 use Testo\Assert;
 use Testo\Codecov\Covers;
+use Testo\Expect;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
 use Yiisoft\Cookies\Cookie;
@@ -136,6 +138,96 @@ final class CookieAssignmentStoreTest
         $store->prune($this->registryWith('checkout-button'));
 
         Assert::false($store->applyToResponse(new Response())->hasHeader('Set-Cookie'));
+    }
+
+    public function entryLimitEvictsOldestAssignmentDeterministically(): void
+    {
+        $store = new CookieAssignmentStore(signer: $this->signer, maxEntries: 2);
+        $store->put('first', 'user-1', 'a');
+        $store->put('second', 'user-1', 'b');
+        $store->put('third', 'user-1', 'c');
+
+        Assert::null($store->get('first', 'user-1'));
+        Assert::same($store->get('second', 'user-1'), 'b');
+        Assert::same($store->get('third', 'user-1'), 'c');
+    }
+
+    public function updatingAssignmentMakesItNewestForEviction(): void
+    {
+        $store = new CookieAssignmentStore(signer: $this->signer, maxEntries: 2);
+        $store->put('first', 'user-1', 'a');
+        $store->put('second', 'user-1', 'b');
+        $store->put('first', 'user-1', 'updated');
+        $store->put('third', 'user-1', 'c');
+
+        Assert::same($store->get('first', 'user-1'), 'updated');
+        Assert::null($store->get('second', 'user-1'));
+        Assert::same($store->get('third', 'user-1'), 'c');
+    }
+
+    public function byteLimitEvictsOldestUntilSetCookieFits(): void
+    {
+        $store = new CookieAssignmentStore(signer: $this->signer, maxCookieBytes: 400);
+        $store->put('first-experiment', 'user-1', str_repeat('a', 100));
+        $store->put('second-experiment', 'user-1', str_repeat('b', 100));
+        $store->put('third-experiment', 'user-1', str_repeat('c', 100));
+
+        $response = $store->applyToResponse(new Response());
+        $setCookie = $response->getHeaderLine('Set-Cookie');
+        $restored = CookieAssignmentStore::fromRequest(
+            request: $this->requestWithCookieFrom($setCookie),
+            signer: $this->signer,
+            maxCookieBytes: 400,
+        );
+
+        Assert::true(strlen($setCookie) <= 400);
+        Assert::null($restored->get('first-experiment', 'user-1'));
+        Assert::same($restored->get('third-experiment', 'user-1'), str_repeat('c', 100));
+    }
+
+    public function oversizedIncomingCookieIsRejectedBeforeDecode(): void
+    {
+        $value = $this->signedValue(json_encode(['experiment' => str_repeat('x', 300)], JSON_THROW_ON_ERROR));
+        $store = CookieAssignmentStore::fromRequest(
+            request: $this->requestWithCookie($value),
+            signer: $this->signer,
+            maxCookieBytes: 256,
+        );
+
+        Assert::null($store->get('experiment', 'user-1'));
+    }
+
+    public function configurationAwareEntryRoundTripsAndInvalidatesOnChange(): void
+    {
+        $store = new CookieAssignmentStore(signer: $this->signer);
+        $store->putForConfiguration('checkout-button', 'user-1', 'green', 'config-v1');
+        $response = $store->applyToResponse(new Response());
+        $restored = CookieAssignmentStore::fromRequest(
+            $this->requestWithCookieFrom($response->getHeaderLine('Set-Cookie')),
+            $this->signer,
+        );
+
+        Assert::same(
+            $restored->getForConfiguration('checkout-button', 'user-1', 'config-v1'),
+            'green',
+        );
+        Assert::null($restored->getForConfiguration('checkout-button', 'user-1', 'config-v2'));
+    }
+
+    public function rejectsZeroEntryLimit(): void
+    {
+        Expect::exception(InvalidArgumentException::class)
+            ->withMessage('Maximum cookie entries must be at least 1');
+
+        new CookieAssignmentStore(signer: $this->signer, maxEntries: 0);
+    }
+
+    public function rejectsImpossiblySmallByteLimit(): void
+    {
+        Expect::exception(InvalidArgumentException::class)
+            ->withMessage('Maximum cookie size must be at least 256 bytes');
+
+        new CookieAssignmentStore(signer: $this->signer, maxCookieBytes: 255);
     }
 
     private function signedValue(string $value): string

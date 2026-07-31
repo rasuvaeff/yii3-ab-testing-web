@@ -2,11 +2,11 @@
 
 | Script | Shows | Needs server? |
 |---|---|---|
-| `basic-usage.php` | `CookieAssignmentStore` + `StickyAssignmentResolver` keeping a variant across two requests | No |
+| `basic-usage.php` | Ready `StickyAssignmentMiddleware` keeping a variant across two requests | No |
 
 The script simulates two requests with `nyholm/psr7`: the first assigns and stores
-a variant in a signed cookie, the second reads the cookie back and serves the same
-variant — demonstrating stickiness without a running server.
+a variant in a bounded signed cookie, the second reads the cookie back through
+the ready middleware and serves the same variant — no copied middleware glue.
 
 ## Running
 

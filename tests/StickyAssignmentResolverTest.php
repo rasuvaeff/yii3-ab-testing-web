@@ -51,7 +51,7 @@ final class StickyAssignmentResolverTest
             strategy: new WeightedHashAssignmentStrategy(),
         );
         $this->store = new ArrayAssignmentStore();
-        $this->resolver = new StickyAssignmentResolver(abTesting: $this->abTesting, store: $this->store);
+        $this->resolver = new StickyAssignmentResolver(resolver: $this->abTesting, store: $this->store);
     }
 
     public function assignsFreshAndStoresWhenNothingStored(): void
@@ -224,7 +224,7 @@ final class StickyAssignmentResolverTest
         };
 
         return new StickyAssignmentResolver(
-            abTesting: new AbTesting(
+            resolver: new AbTesting(
                 provider: $provider,
                 strategy: new WeightedHashAssignmentStrategy(),
             ),

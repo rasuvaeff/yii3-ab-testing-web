@@ -17,7 +17,7 @@ need it, pins a subject to a variant across weight changes via a signed cookie.
 ## Requirements
 
 - PHP 8.3+
-- `rasuvaeff/yii3-ab-testing` ^1.4 (adds targeting rules and mismatch metadata)
+- `rasuvaeff/yii3-ab-testing` ^1.6 (`AssignmentResolver` and configuration ids)
 - `yiisoft/cookies` ^1.2
 - a PSR-7 implementation (e.g. `nyholm/psr7`) and a PSR-15 stack
 
@@ -36,7 +36,7 @@ Two cookie roles solve two different problems:
 | Need | Use |
 |---|---|
 | A stable id for anonymous visitors | `SubjectIdMiddleware` (cookie `ab_id`) |
-| Keep a variant even after weights/variants change | `CookieAssignmentStore` + `StickyAssignmentResolver` |
+| Keep a variant across requests | `StickyAssignmentMiddleware` |
 
 A logged-in user already has a stable id (`userId`) — set it as the request
 attribute upstream and the middleware leaves it alone.
@@ -44,25 +44,55 @@ attribute upstream and the middleware leaves it alone.
 ## Subject identity middleware
 
 Add `SubjectIdMiddleware` to your PSR-15 stack. It resolves the subject id and
-exposes it as a request attribute (`ab.subjectId` by default):
+exposes it through `SubjectIdRequestAccessor` (and keeps the historical string
+attribute `ab.subjectId` for compatibility):
 
 1. if the attribute is already set (an upstream auth middleware put `userId` there)
    it is kept — no cookie;
 2. otherwise the `ab_id` cookie is reused — only when the `SubjectIdGeneratorInterface` recognises the value as its own (32 lowercase hex chars by default); a tampered or oversized value is discarded and regenerated;
-3. otherwise a new opaque id is generated and a long-lived `HttpOnly`,
-   `SameSite=Lax` cookie is set.
+3. otherwise a new opaque id is generated; it is persisted as an `HttpOnly`,
+   `SameSite=Lax` cookie only when the consent policy permits persistence.
 
 ```php
+use Rasuvaeff\Yii3AbTestingWeb\CallbackConsentPolicy;
 use Rasuvaeff\Yii3AbTestingWeb\SubjectIdMiddleware;
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdRequestAccessor;
 
-$middleware = new SubjectIdMiddleware(); // defaults: cookie 'ab_id', attribute 'ab.subjectId'
+$consent = new CallbackConsentPolicy(
+    static fn ($request): bool => $request->getAttribute('analyticsConsent') === true,
+);
+$middleware = new SubjectIdMiddleware(consentPolicy: $consent);
 
 // in your action/handler:
-$subjectId = $request->getAttribute('ab.subjectId');
-$assignment = $ab->assign(experiment: 'checkout-button', subjectId: $subjectId);
+$subjectId = (new SubjectIdRequestAccessor())->require($request);
+$assignment = $ab->resolve(experiment: 'checkout-button', subjectId: $subjectId->value);
 ```
 
-For most experiments this is all you need.
+Before consent, incoming identity and assignment cookies are ignored, a fresh
+`SubjectIdSource::Ephemeral` id exists only for the request, and no cookie is
+written. `AllowAllConsentPolicy` remains the default for backward compatibility;
+applications that require consent must pass their policy to both middleware.
+
+### Anonymous to authenticated identity
+
+Configure `identityTransition` when auth middleware supplies `ab.subjectId` and
+an anonymous `ab_id` cookie also exists:
+
+| Strategy | Subject id after login | Existing browser assignments |
+|---|---|---|
+| `MigrateAssignments` (default) | authenticated id | retained |
+| `UseAuthenticatedId` | authenticated id | discarded and started afresh |
+| `KeepAnonymousId` | anonymous cookie id | retained |
+
+```php
+use Rasuvaeff\Yii3AbTestingWeb\AnonymousToAuthenticatedStrategy;
+
+$middleware = new SubjectIdMiddleware(
+    consentPolicy: $consent,
+    identityTransition: AnonymousToAuthenticatedStrategy::UseAuthenticatedId,
+);
+```
+
 ### Custom subject id format
 
 The id format and the check that accepts it back from the cookie are one
@@ -104,79 +134,78 @@ generator (rule 1 above), so the same person keeps one variant across devices.
 
 ## Sticky variants
 
-Changing weights or the variant set shifts bucket boundaries and reshuffles
-subjects. To pin a subject across such changes, resolve through a
-`CookieAssignmentStore` (a signed `{experiment: variant}` cookie) and a
-`StickyAssignmentResolver`. Because the store is request-scoped, wire it in a thin
-middleware that reads the cookie, exposes the store, and writes it back:
+Use the ready PSR-15 `StickyAssignmentMiddleware` after `SubjectIdMiddleware`.
+It creates a request-scoped `CookieAssignmentStore`, exposes an
+`AssignmentResolver`, and applies changed assignments to the response:
 
 ```php
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
-use Rasuvaeff\Yii3AbTestingWeb\CookieAssignmentStore;
+use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentMiddleware;
 use Yiisoft\Cookies\CookieSigner;
 
-final class StickyCookieMiddleware implements MiddlewareInterface
-{
-    public function __construct(private CookieSigner $signer) {}
-
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
-    {
-        $store = CookieAssignmentStore::fromRequest($request, $this->signer);
-        $response = $handler->handle($request->withAttribute('ab.store', $store));
-
-        return $store->applyToResponse($response);
-    }
-}
+$identityMiddleware = new SubjectIdMiddleware(consentPolicy: $consent);
+$stickyMiddleware = new StickyAssignmentMiddleware(
+    resolver: $ab,
+    signer: new CookieSigner($secretKey),
+    consentPolicy: $consent,
+    maxEntries: 50,
+    maxCookieBytes: 3800,
+);
 ```
 
 Then in your action:
 
 ```php
-use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentResolver;
+use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentRequestAccessor;
+use Rasuvaeff\Yii3AbTestingWeb\SubjectIdRequestAccessor;
 
-$store = $request->getAttribute('ab.store');                 // CookieAssignmentStore
-$resolver = new StickyAssignmentResolver($ab, $store);
+$subjectId = (new SubjectIdRequestAccessor())->require($request);
+$resolver = (new StickyAssignmentRequestAccessor())->resolver($request);
 
 $assignment = $resolver->resolve(
     experiment: 'checkout-button',
-    subjectId: $request->getAttribute('ab.subjectId'),
+    subjectId: $subjectId->value,
 );
-// first time: assigned and stored; later: the stored variant is returned
 ```
 
-`StickyAssignmentResolver` keeps `AbTesting::assign()` pure and applies decisions
-in a strict order. A disabled experiment returns its fallback before any forced or
-sticky assignment, so the kill switch always wins. For an enabled experiment, a
-forced variant bypasses targeting and the store. Otherwise core targeting is
-evaluated before the store: a mismatch returns the fallback without reading or
-writing sticky data. Only an eligible subject can reuse a stored variant; a stored
-variant that is no longer part of the experiment is re-assigned.
+The signed cookie is capped by both `maxEntries` and the actual `Set-Cookie`
+header size (`maxCookieBytes`). Eviction is deterministic FIFO; updating an
+experiment makes it newest. Oversized incoming cookies are rejected before JSON
+decoding. Entries carry core's `configurationId`, so a changed experiment
+definition invalidates its old sticky assignment. The v1 string-map format is
+still accepted.
+
+`StickyAssignmentResolver` implements core `AssignmentResolver`. Fallback,
+forced and targeting decisions return before store access; disabled experiments
+remain a kill switch. `AbTesting::assign()` stays pure.
 
 ## API reference
 
 | Class | Description |
 |---|---|
 | `SubjectIdMiddleware` | PSR-15 middleware; stable subject id + `ab_id` cookie |
+| `SubjectId`, `SubjectIdSource` | typed identity value and anonymous/authenticated/ephemeral source |
+| `SubjectIdRequestAccessor` | typed request access while preserving `ab.subjectId` compatibility |
+| `ConsentPolicyInterface` | persistence decision; use `CallbackConsentPolicy` for application consent |
+| `AnonymousToAuthenticatedStrategy` | keep anonymous, use authenticated, or migrate assignments |
 | `SubjectIdGeneratorInterface` | `generate()` + `isValid()`: the id format and the check that accepts it back |
 | `HexSubjectIdGenerator` | default: 32 lowercase hex characters |
 | `CookieAssignmentStore` | `AssignmentStore` over one signed cookie; `fromRequest()` / `applyToResponse()` |
-| `StickyAssignmentResolver` | get-or-assign over `AbTesting` + any `AssignmentStore` |
+| `ConfigurationAwareAssignmentStore` | optional store extension: sticky lookups scoped by core `configurationId` |
+| `StickyAssignmentMiddleware` | ready request-scoped cookie store + sticky resolver PSR-15 integration |
+| `StickyAssignmentRequestAccessor` | typed access to the request resolver and store |
+| `StickyAssignmentResolver` | `AssignmentResolver` decorator over any core resolver + store |
 
 ## Security & privacy
 
 - The subject id is an opaque 128-bit token (`random_bytes`), not a UUID, and
-  carries no personal data — but it is a persistent identifier. Set the cookie
-  only after consent where the law requires it.
+  carries no personal data, but it is a persistent identifier. A denied consent
+  policy prevents both identity and sticky-cookie reads/writes.
 - The sticky cookie is signed (`yiisoft/cookies` `CookieSigner`); a missing,
   unsigned, tampered, or malformed cookie is ignored and yields an empty store —
   never a partial or attacker-controlled variant map. Provide a strong signing key.
 - Cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` by default.
-- The cookie is browser-scoped: the `$subjectId` argument of the store is ignored.
-  A visitor who was anonymous then logged in keeps the variants from their
-  anonymous identity.
+- The sticky cookie is browser-scoped: the `$subjectId` argument of the store is
+  ignored. Choose the authenticated transition explicitly for your product.
 
 ## Examples
 

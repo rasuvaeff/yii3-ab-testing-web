@@ -8,14 +8,18 @@ composer require rasuvaeff/yii3-ab-testing-web
 
 ## Rules
 
-- Requires core `^1.4` (adds targeting rules and `Assignment::isTargetingMismatch`).
+- Requires core `^1.6` (`AssignmentResolver`, `Assignment::configurationId`).
 - Assignment is deterministic in `subjectId`; a stable id keeps a visitor in the same variant across visits without storing anything.
-- `SubjectIdMiddleware` (PSR-15): pre-set request attribute (logged-in userId) wins → no cookie; else reuse `ab_id` cookie; else generate opaque id (`random_bytes(16)` hex, NOT a UUID) + set long-lived `HttpOnly`, `SameSite=Lax`, `Secure` cookie. TTL via `Max-Age`. `process()` may throw `\Random\RandomException`.
-- `CookieAssignmentStore implements AssignmentStore`: sticky variants in one signed cookie (`yiisoft/cookies` `CookieSigner`). Request-scoped: `fromRequest()` / `applyToResponse()`. Missing/unsigned/tampered/malformed cookie → empty store. Browser-scoped → `$subjectId` arg ignored.
+- `SubjectIdMiddleware` (PSR-15): pre-set authenticated id, valid `ab_id`, or generated opaque id (`random_bytes(16)` hex). `SubjectIdRequestAccessor` returns typed `SubjectId`; legacy `ab.subjectId` string remains populated.
+- Pass the same `ConsentPolicyInterface` to subject and sticky middleware. Denial ignores both persistent cookies, creates `SubjectIdSource::Ephemeral`, and writes no cookies. `CallbackConsentPolicy` adapts `callable(ServerRequestInterface): bool`; `AllowAllConsentPolicy` is the backward-compatible default.
+- `AnonymousToAuthenticatedStrategy`: `MigrateAssignments` (default: user id + existing browser assignments), `UseAuthenticatedId` (user id + fresh assignments), `KeepAnonymousId` (anonymous id + existing assignments).
+- `CookieAssignmentStore implements ConfigurationAwareAssignmentStore`: signed sticky variants, request-scoped via `fromRequest()` / `applyToResponse()`. Defaults: max 50 entries, max 3800 actual `Set-Cookie` bytes. Deterministic FIFO eviction; update moves entry to newest. Oversized input is rejected before JSON decode. Browser-scoped → `$subjectId` ignored.
+- Configuration-aware entries store core `configurationId`; mismatches are misses. Cookie v1 `{experiment: "variant"}` remains readable.
+- `StickyAssignmentMiddleware`: ready PSR-15 glue; run after `SubjectIdMiddleware`. It exposes resolver/store via `StickyAssignmentRequestAccessor` and applies changed cookies to the response.
 - `StickyAssignmentResolver` precedence: disabled → fallback before forced/store (kill switch wins); on enabled experiments forced bypasses targeting/store; otherwise core targeting runs before store and mismatch → fallback with no store read/write; eligible stored variant is reused only while valid (`isSticky = true`); fallbacks are not stored. Keeps `AbTesting::assign()` pure.
 - `SubjectIdMiddleware` reuses the `ab_id` cookie only when `SubjectIdGeneratorInterface::isValid()` accepts it; foreign values are regenerated.
 - `SubjectIdGeneratorInterface` = `generate()` + `isValid()`. Both halves or none: a generator whose `isValid()` rejects its own output makes the middleware mint a new id every request, flipping the visitor's variant on every page view. Default `HexSubjectIdGenerator` = 32 lowercase hex, anchored with `\z` (`$` would also match a trailing newline). `isValid()` is a security boundary — the cookie is attacker-controlled and whatever passes becomes the subject id in logs and analytics.
-- To pin the id to a logged-in user no generator is needed: an upstream middleware setting the `ab.subjectId` attribute wins over cookie and generator.
+- To provide a logged-in id, upstream middleware sets legacy `ab.subjectId` or uses `SubjectIdRequestAccessor` with `SubjectIdSource::Authenticated`.
 - `CookieAssignmentStore::prune(ExperimentRegistry)` drops variants of removed experiments; call before `applyToResponse()`.
 - No `config/di.php`: the store is request-scoped and middleware are added by the app — nothing to bind.
 
@@ -31,6 +35,8 @@ $mw = new SubjectIdMiddleware(
     attribute: 'ab.subjectId',    // optional
     // maxAge: DateInterval, secure: bool, sameSite: Cookie::SAME_SITE_*
     // idGenerator: SubjectIdGeneratorInterface (default HexSubjectIdGenerator)
+    // consentPolicy: ConsentPolicyInterface
+    // identityTransition: AnonymousToAuthenticatedStrategy
 );
 
 interface SubjectIdGeneratorInterface
@@ -40,7 +46,7 @@ interface SubjectIdGeneratorInterface
     public function isValid(string $id): bool;
 }
 // in handler:
-$subjectId = $request->getAttribute('ab.subjectId');
+$subjectId = (new SubjectIdRequestAccessor())->require($request); // SubjectId
 ```
 
 ### CookieAssignmentStore
@@ -49,21 +55,32 @@ $subjectId = $request->getAttribute('ab.subjectId');
 use Rasuvaeff\Yii3AbTestingWeb\CookieAssignmentStore;
 use Yiisoft\Cookies\CookieSigner;
 
-$store = CookieAssignmentStore::fromRequest($request, new CookieSigner($secretKey)); // 'ab_variants'
+$store = CookieAssignmentStore::fromRequest(
+    request: $request,
+    signer: new CookieSigner($secretKey),
+    maxEntries: 50,
+    maxCookieBytes: 3800,
+);
 $store->get('checkout-button', $subjectId);     // ?string
 $store->put('checkout-button', $subjectId, 'green');
 $response = $store->applyToResponse($response);  // writes signed cookie if changed
 ```
 
-### StickyAssignmentResolver
+### StickyAssignmentMiddleware
 
 ```php
-use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentResolver;
+use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentMiddleware;
+use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentRequestAccessor;
 
-$resolver = new StickyAssignmentResolver($ab, $store);
+$middleware = new StickyAssignmentMiddleware(
+    resolver: $ab,
+    signer: new CookieSigner($secretKey),
+    consentPolicy: $consentPolicy,
+);
+$resolver = (new StickyAssignmentRequestAccessor())->resolver($request);
 $assignment = $resolver->resolve(
     experiment: 'checkout-button',
-    subjectId: $subjectId,
+    subjectId: $subjectId->value,
     forcedVariant: null,     // optional, bypasses the store
     context: null,           // optional AssignmentContext
 );
