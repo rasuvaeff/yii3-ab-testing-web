@@ -13,6 +13,7 @@ use Rasuvaeff\Yii3AbTesting\ExperimentRegistry;
 use Rasuvaeff\Yii3AbTestingWeb\CookieAssignmentStore;
 use Testo\Assert;
 use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
 use Testo\Expect;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
@@ -228,6 +229,123 @@ final class CookieAssignmentStoreTest
             ->withMessage('Maximum cookie size must be at least 256 bytes');
 
         new CookieAssignmentStore(signer: $this->signer, maxCookieBytes: 255);
+    }
+
+    public function aStoreExactlyAtTheEntryLimitKeepsEveryAssignment(): void
+    {
+        $store = new CookieAssignmentStore(
+            signer: $this->signer,
+            variants: ['first' => 'a', 'second' => 'b'],
+            maxEntries: 2,
+        );
+
+        Assert::same($store->get('first', 'user-1'), 'a');
+        Assert::same($store->get('second', 'user-1'), 'b');
+        Assert::false($store->applyToResponse(new Response())->hasHeader('Set-Cookie'));
+    }
+
+    public function acceptsTheSmallestUsefulEntryLimit(): void
+    {
+        $store = new CookieAssignmentStore(signer: $this->signer, maxEntries: 1);
+        $store->put('first', 'user-1', 'a');
+
+        Assert::same($store->get('first', 'user-1'), 'a');
+    }
+
+    public function seededVariantsBeyondTheLimitAreEvictedOnConstruction(): void
+    {
+        $store = new CookieAssignmentStore(
+            signer: $this->signer,
+            variants: ['first' => 'a', 'second' => 'b', 'third' => 'c'],
+            maxEntries: 2,
+        );
+
+        Assert::null($store->get('first', 'user-1'));
+        Assert::same($store->get('second', 'user-1'), 'b');
+        Assert::same($store->get('third', 'user-1'), 'c');
+    }
+
+    public function evictionOnConstructionMarksTheStoreDirty(): void
+    {
+        $store = new CookieAssignmentStore(
+            signer: $this->signer,
+            variants: ['first' => 'a', 'second' => 'b'],
+            maxEntries: 1,
+        );
+
+        Assert::true($store->applyToResponse(new Response())->hasHeader('Set-Cookie'));
+    }
+
+    public function configurationAwareWritesRespectTheEntryLimit(): void
+    {
+        $store = new CookieAssignmentStore(signer: $this->signer, maxEntries: 2);
+        $store->putForConfiguration('first', 'user-1', 'a', 'c1');
+        $store->putForConfiguration('second', 'user-1', 'b', 'c1');
+        $store->putForConfiguration('third', 'user-1', 'c', 'c1');
+
+        Assert::null($store->getForConfiguration('first', 'user-1', 'c1'));
+        Assert::same($store->getForConfiguration('third', 'user-1', 'c1'), 'c');
+    }
+
+    public function aSetCookieHeaderExactlyAtTheLimitIsKept(): void
+    {
+        $measuring = new CookieAssignmentStore(signer: $this->signer);
+        $measuring->put('checkout-button', 'user-1', 'green');
+        $exactSize = strlen($measuring->applyToResponse(new Response())->getHeaderLine('Set-Cookie'));
+
+        $store = new CookieAssignmentStore(signer: $this->signer, maxCookieBytes: $exactSize);
+        $store->put('checkout-button', 'user-1', 'green');
+        $restored = CookieAssignmentStore::fromRequest(
+            request: $this->requestWithCookieFrom(
+                $store->applyToResponse(new Response())->getHeaderLine('Set-Cookie'),
+            ),
+            signer: $this->signer,
+        );
+
+        Assert::same($restored->get('checkout-button', 'user-1'), 'green');
+    }
+
+    public function anIncomingCookieExactlyAtTheLimitIsAccepted(): void
+    {
+        // the guard rejects a raw cookie *longer* than the limit; a cookie of
+        // exactly the limit must still decode. The variant is padded so the
+        // signed value clears the 256-byte minimum limit the store accepts.
+        $variant = str_repeat('g', 256);
+        $value = $this->signedValue(json_encode(['checkout' => $variant], JSON_THROW_ON_ERROR));
+        $store = CookieAssignmentStore::fromRequest(
+            request: $this->requestWithCookie($value),
+            signer: $this->signer,
+            maxCookieBytes: strlen($value),
+        );
+
+        Assert::same($store->get('checkout', 'user-1'), $variant);
+    }
+
+    #[DataProvider('malformedEntryProvider')]
+    public function skipsMalformedConfigurationAwareEntries(mixed $entry): void
+    {
+        $value = $this->signedValue(json_encode(
+            ['broken' => $entry, 'valid' => ['v' => 'green', 'c' => 'config-v1']],
+            JSON_THROW_ON_ERROR,
+        ));
+        $store = CookieAssignmentStore::fromRequest($this->requestWithCookie($value), $this->signer);
+
+        Assert::null($store->get('broken', 'user-1'));
+        Assert::same($store->getForConfiguration('valid', 'user-1', 'config-v1'), 'green');
+    }
+
+    /**
+     * @return iterable<string, array{mixed}>
+     */
+    public static function malformedEntryProvider(): iterable
+    {
+        yield 'scalar entry' => [42];
+        yield 'list entry' => [['green']];
+        yield 'empty array entry' => [[]];
+        yield 'missing configuration id' => [['v' => 'green']];
+        yield 'missing variant' => [['c' => 'config-v1']];
+        yield 'non-string variant' => [['v' => 42, 'c' => 'config-v1']];
+        yield 'non-string configuration id' => [['v' => 'green', 'c' => 42]];
     }
 
     private function signedValue(string $value): string

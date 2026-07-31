@@ -115,6 +115,54 @@ final class StickyAssignmentMiddlewareTest
         Assert::true($response->hasHeader('Set-Cookie'));
     }
 
+    public function startingFreshOverwritesAnExistingCookieEvenWithoutNewAssignments(): void
+    {
+        // the stale anonymous cookie must not survive the transition: the store
+        // starts dirty exactly so the response replaces it
+        $request = $this->requestWithSubject(new SubjectId(
+            value: 'user-42',
+            source: SubjectIdSource::Authenticated,
+        ))->withCookieParams(['ab_variants' => $this->seededCookie('green')]);
+
+        $response = (new StickyAssignmentMiddleware(
+            resolver: $this->abTesting,
+            signer: $this->signer,
+        ))->process($request, new PassthroughHandler(new Response()));
+
+        Assert::true($response->hasHeader('Set-Cookie'));
+    }
+
+    public function startingFreshWithoutACookieWritesNothing(): void
+    {
+        $request = $this->requestWithSubject(new SubjectId(
+            value: 'user-42',
+            source: SubjectIdSource::Authenticated,
+        ));
+
+        $response = (new StickyAssignmentMiddleware(
+            resolver: $this->abTesting,
+            signer: $this->signer,
+        ))->process($request, new PassthroughHandler(new Response()));
+
+        Assert::false($response->hasHeader('Set-Cookie'));
+    }
+
+    public function consentDenialLeavesAnExistingCookieAlone(): void
+    {
+        $request = $this->requestWithSubject(new SubjectId(
+            value: 'user-42',
+            source: SubjectIdSource::Authenticated,
+        ))->withCookieParams(['ab_variants' => $this->seededCookie('green')]);
+
+        $response = (new StickyAssignmentMiddleware(
+            resolver: $this->abTesting,
+            signer: $this->signer,
+            consentPolicy: new CallbackConsentPolicy(static fn(ServerRequest $request): bool => false),
+        ))->process($request, new PassthroughHandler(new Response()));
+
+        Assert::false($response->hasHeader('Set-Cookie'));
+    }
+
     private function requestWithSubject(SubjectId $subjectId): ServerRequestInterface
     {
         $request = new ServerRequest('GET', '/');

@@ -42,6 +42,27 @@ final class SubjectIdRequestAccessorTest
         Assert::null((new SubjectIdRequestAccessor())->get(new ServerRequest('GET', '/')));
     }
 
+    public function typedAndLegacyAttributesUseDistinctKeys(): void
+    {
+        // the typed attribute must not collide with the legacy string one:
+        // writing both under the same key would make every round trip come
+        // back as an Authenticated identity
+        $accessor = new SubjectIdRequestAccessor(attribute: 'subject');
+        $subjectId = new SubjectId(value: 'anon-1', source: SubjectIdSource::Anonymous);
+        $request = $accessor->with(new ServerRequest('GET', '/'), $subjectId);
+
+        Assert::same($request->getAttribute('subject.typed'), $subjectId);
+        Assert::same($request->getAttribute('subject'), 'anon-1');
+        Assert::same($accessor->require($request)->source, SubjectIdSource::Anonymous);
+    }
+
+    public function blankLegacyAttributeIsNotAnIdentity(): void
+    {
+        $request = (new ServerRequest('GET', '/'))->withAttribute('ab.subjectId', "  \t ");
+
+        Assert::null((new SubjectIdRequestAccessor())->get($request));
+    }
+
     public function requireThrowsWhenMissing(): void
     {
         Expect::exception(RuntimeException::class)->withMessage('Subject id is not available on the request');
