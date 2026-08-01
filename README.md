@@ -33,6 +33,8 @@ need it, pins a subject to a variant across weight changes via a signed cookie.
 composer require rasuvaeff/yii3-ab-testing-web
 ```
 
+Upgrading from 1.x? See [UPGRADE.md](UPGRADE.md).
+
 ## Identity vs stickiness
 
 Assignment is deterministic in `subjectId` (`sha256(salt:subjectId)`), so a stable

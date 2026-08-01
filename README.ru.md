@@ -35,6 +35,8 @@
 composer require rasuvaeff/yii3-ab-testing-web
 ```
 
+Обновляетесь с 1.x? См. [UPGRADE.md](UPGRADE.md).
+
 ## Идентичность vs sticky-привязка
 
 Назначение детерминировано по `subjectId` (`sha256(salt:subjectId)`), поэтому
