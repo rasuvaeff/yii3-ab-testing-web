@@ -13,6 +13,9 @@ stable subject id (so deterministic assignment holds across visits) and, when yo
 need it, pins a subject to a variant across weight changes via a signed cookie.
 
 > Using an AI coding assistant? [llms.txt](llms.txt) contains a compact API reference you can ingest in your prompt context.
+> Projects using the [llm/skills](https://github.com/roxblnfk/skills) Composer
+> plugin also get this package's agent skill synced into `.agents/skills/`
+> automatically on install.
 
 ## Requirements
 
