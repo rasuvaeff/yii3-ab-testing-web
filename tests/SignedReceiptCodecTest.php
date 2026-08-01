@@ -110,6 +110,21 @@ final class SignedReceiptCodecTest
         new SignedReceiptCodec('too-short');
     }
 
+    /** Exactly at the bound, which "at least 32" must accept. */
+    public function acceptsASecretOfExactlyThirtyTwoBytes(): void
+    {
+        $codec = new SignedReceiptCodec(str_repeat('k', 32));
+
+        Assert::notNull($codec->decode($codec->encode($this->receipt())));
+    }
+
+    public function rejectsASecretOneByteShort(): void
+    {
+        Expect::exception(InvalidArgumentException::class);
+
+        new SignedReceiptCodec(str_repeat('k', 31));
+    }
+
     /**
      * The value travels wherever the application puts it — cookie, JSON body,
      * query string — so it must use only characters none of those escape.
