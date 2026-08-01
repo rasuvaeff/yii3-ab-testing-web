@@ -68,6 +68,27 @@ make release-check
 `make test-coverage` and `make mutation` bootstrap `pcov` inside the
 `composer:2` container because the base image has no coverage driver.
 
+## Mutation testing
+
+`minMsi` is 98, and the gap is accounted for rather than unexplained. Of 188
+mutants: 182 killed outright, 4 timed out, 2 escaped.
+
+**The 4 timeouts are real detections, not flakiness.** Each removes the call or
+flips the comparison that makes an eviction loop terminate
+(`applyToResponse`'s `do…while(true)`, `enforceEntryLimit`'s `while`,
+`evictOldest`'s null guard), so the mutant hangs — which is exactly what the
+code would do in production. Do not "fix" them by adding time limits.
+
+**The 2 escaped are equivalent under this code's constraints:**
+
+| Where | Mutation | Why no test can kill it |
+|---|---|---|
+| `CookieAssignmentStore` `!$signer->isSigned()` guard | `return` removed | `CookieSigner::validate()` throws `RuntimeException` on an unsigned cookie, and the surrounding `catch (\RuntimeException…)` returns the same empty maps. The guard is explicit flow rather than exception-driven flow, so it stays. |
+| `toEntryMaps` guard chain, first `\|\|` → `&&` | operand merge | Killing it needs a non-array whose `isset($x['v'])` is true — an `ArrayAccess` object. `json_decode(assoc: true)` never produces one, and strings are handled by the branch above. |
+
+If a change makes either killable, kill it. Adding a **third** escaped mutant
+fails the gate — strengthen the assertion, never lower `minMsi`.
+
 ## Invariants & gotchas
 
 - Requires core `^2.0`. `ConfigurationAwareAssignmentStore` now lives in the
