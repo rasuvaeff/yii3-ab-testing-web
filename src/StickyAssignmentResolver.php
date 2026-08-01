@@ -79,8 +79,8 @@ final readonly class StickyAssignmentResolver implements AssignmentResolver
                 experiment: $assignment->experiment,
                 variant: $stored,
                 subjectId: $assignment->subjectId,
-                context: $assignment->context,
                 source: AssignmentSource::Store,
+                context: $assignment->context,
                 configurationId: $assignment->configurationId,
             );
         }
