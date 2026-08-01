@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use LengthException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Rasuvaeff\Yii3AbTesting\ConfigurationAwareAssignmentStore;
 use Rasuvaeff\Yii3AbTesting\ExperimentRegistry;
 use Yiisoft\Cookies\Cookie;
 use Yiisoft\Cookies\CookieSigner;

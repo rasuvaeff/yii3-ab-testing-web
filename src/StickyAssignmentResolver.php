@@ -8,7 +8,9 @@ use Rasuvaeff\Yii3AbTesting\AbTesting;
 use Rasuvaeff\Yii3AbTesting\Assignment;
 use Rasuvaeff\Yii3AbTesting\AssignmentContext;
 use Rasuvaeff\Yii3AbTesting\AssignmentResolver;
+use Rasuvaeff\Yii3AbTesting\AssignmentSource;
 use Rasuvaeff\Yii3AbTesting\AssignmentStore;
+use Rasuvaeff\Yii3AbTesting\ConfigurationAwareAssignmentStore;
 
 /**
  * Resolves an assignment with stickiness: a previously stored variant wins over a
@@ -58,7 +60,7 @@ final readonly class StickyAssignmentResolver implements AssignmentResolver
             context: $context,
         );
 
-        if ($assignment->isFallback || $assignment->isForced || $assignment->isSticky) {
+        if ($assignment->isFallback() || $assignment->isForced() || $assignment->isSticky()) {
             return $assignment;
         }
 
@@ -78,7 +80,7 @@ final readonly class StickyAssignmentResolver implements AssignmentResolver
                 variant: $stored,
                 subjectId: $assignment->subjectId,
                 context: $assignment->context,
-                isSticky: true,
+                source: AssignmentSource::Store,
                 configurationId: $assignment->configurationId,
             );
         }

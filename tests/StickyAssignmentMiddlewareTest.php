@@ -76,7 +76,7 @@ final class StickyAssignmentMiddlewareTest
 
         $response = $middleware->process($request, $handler);
 
-        Assert::false($handler->assignment?->isSticky ?? true);
+        Assert::false($handler->assignment?->isSticky() ?? true);
         Assert::false($response->hasHeader('Set-Cookie'));
     }
 
@@ -95,7 +95,7 @@ final class StickyAssignmentMiddlewareTest
         ))->process($request, $handler);
 
         Assert::same($handler->assignment?->variant, 'green');
-        Assert::true($handler->assignment?->isSticky ?? false);
+        Assert::true($handler->assignment?->isSticky() ?? false);
     }
 
     public function authenticatedFreshStrategyDiscardsAnonymousAssignments(): void
@@ -111,7 +111,7 @@ final class StickyAssignmentMiddlewareTest
             signer: $this->signer,
         ))->process($request, $handler);
 
-        Assert::false($handler->assignment?->isSticky ?? true);
+        Assert::false($handler->assignment?->isSticky() ?? true);
         Assert::true($response->hasHeader('Set-Cookie'));
     }
 

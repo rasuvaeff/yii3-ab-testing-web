@@ -64,8 +64,13 @@ make release-check
 
 ## Invariants & gotchas
 
-- Requires core `^1.6` (`AssignmentResolver` and configuration ids). Resolves from
-  Packagist; no path repository needed.
+- Requires core `^2.0`. `ConfigurationAwareAssignmentStore` now lives in the
+  **core**, not here: the database package implements it too, and sibling
+  adapters must not depend on each other to share a store contract. A local
+  copy of that interface would be worse than a duplicate — `StickyAssignmentResolver`
+  matches on it with `instanceof`, so a store implementing the *other* copy
+  would silently take the non-configuration-aware branch and reuse a variant
+  across a reweight.
 - **`SubjectIdGeneratorInterface` owns BOTH generation and validation.** They
   cannot be split: the middleware reuses a cookie only when `isValid()` accepts
   it, so a generator whose check rejects its own output mints a new id on every
@@ -90,8 +95,8 @@ make release-check
   or sticky resolution (kill switch always wins); forced on an enabled experiment
   bypasses targeting/store; otherwise targeting is evaluated before store access,
   and mismatch returns fallback without reading/writing sticky data. A stored
-  variant is reused only while it remains in the experiment (`isSticky = true`);
-  fallbacks are not stored.
+  variant is reused only while it remains in the experiment
+  (`source: AssignmentSource::Store`); fallbacks are not stored.
 - Tests use `nyholm/psr7` for PSR-7 messages and a real `Yiisoft\Cookies\CookieSigner`.
 - Code: `declare(strict_types=1)`; `SubjectIdMiddleware`/`StickyAssignmentResolver`
   are `final readonly`, `CookieAssignmentStore` is `final` (mutable variant map);

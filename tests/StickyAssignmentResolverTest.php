@@ -11,6 +11,7 @@ use Rasuvaeff\Yii3AbTesting\AssignmentContext;
 use Rasuvaeff\Yii3AbTesting\AssignmentResolver;
 use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
 use Rasuvaeff\Yii3AbTesting\ConfigExperimentProvider;
+use Rasuvaeff\Yii3AbTesting\DecisionReason;
 use Rasuvaeff\Yii3AbTesting\Exception\InvalidExperimentException;
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
@@ -73,7 +74,7 @@ final class StickyAssignmentResolverTest
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
         Assert::same($assignment->variant, 'control');
-        Assert::true($assignment->isSticky);
+        Assert::true($assignment->isSticky());
         Assert::count($this->store->gets, 1);
         Assert::same($this->store->puts, []);
     }
@@ -82,7 +83,7 @@ final class StickyAssignmentResolverTest
     {
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
-        Assert::false($assignment->isSticky);
+        Assert::false($assignment->isSticky());
     }
 
     public function forcedVariantBypassesStore(): void
@@ -92,7 +93,7 @@ final class StickyAssignmentResolverTest
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1', forcedVariant: 'green');
 
         Assert::same($assignment->variant, 'green');
-        Assert::true($assignment->isForced);
+        Assert::true($assignment->isForced());
         Assert::same($this->store->gets, []);
         Assert::same($this->store->puts, []);
     }
@@ -104,7 +105,7 @@ final class StickyAssignmentResolverTest
         $assignment = $this->resolver->resolve(experiment: 'pricing-page', subjectId: 'user-1');
 
         Assert::same($assignment->variant, 'control');
-        Assert::true($assignment->isFallback);
+        Assert::true($assignment->isFallback());
         Assert::same($this->store->gets, []);
         Assert::same($this->store->puts, []);
     }
@@ -120,8 +121,9 @@ final class StickyAssignmentResolverTest
         );
 
         Assert::same($assignment->variant, 'control');
-        Assert::true($assignment->isFallback);
-        Assert::false($assignment->isForced);
+        // Assert the reason itself: with one enum, `isFallback() && !isForced()`
+        // is true by construction and would pass even if precedence broke.
+        Assert::same($assignment->reason, DecisionReason::FallbackDisabled);
         Assert::same($this->store->gets, []);
         Assert::same($this->store->puts, []);
     }
@@ -136,7 +138,7 @@ final class StickyAssignmentResolverTest
             subjectId: 'user-1',
             context: $eligibleContext,
         );
-        Assert::false($initial->isFallback);
+        Assert::false($initial->isFallback());
         Assert::count($this->store->puts, 1);
 
         $this->store->gets = [];
@@ -149,9 +151,9 @@ final class StickyAssignmentResolverTest
         );
 
         Assert::same($assignment->variant, 'control');
-        Assert::true($assignment->isFallback);
-        Assert::true($assignment->isTargetingMismatch);
-        Assert::false($assignment->isSticky);
+        Assert::true($assignment->isFallback());
+        Assert::true($assignment->isTargetingMismatch());
+        Assert::false($assignment->isSticky());
         Assert::same($this->store->gets, []);
         Assert::same($this->store->puts, []);
     }
@@ -178,8 +180,9 @@ final class StickyAssignmentResolverTest
         );
 
         Assert::same($assignment->variant, 'green');
-        Assert::true($assignment->isForced);
-        Assert::false($assignment->isTargetingMismatch);
+        // Same reasoning: the reason must be Forced, not merely "not a
+        // targeting mismatch", which one enum makes automatic.
+        Assert::same($assignment->reason, DecisionReason::Forced);
         Assert::same($this->store->gets, []);
         Assert::same($this->store->puts, []);
     }
@@ -219,7 +222,7 @@ final class StickyAssignmentResolverTest
             ->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
         Assert::same($assignment->variant, 'variant-from-another-system');
-        Assert::true($assignment->isSticky);
+        Assert::true($assignment->isSticky());
     }
 
     public function throwsForUnknownExperiment(): void
