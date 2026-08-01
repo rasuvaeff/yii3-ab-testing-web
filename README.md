@@ -13,6 +13,12 @@ stable subject id (so deterministic assignment holds across visits) and, when yo
 need it, pins a subject to a variant across weight changes via a signed cookie.
 
 > Using an AI coding assistant? [llms.txt](llms.txt) contains a compact API reference you can ingest in your prompt context.
+> Projects using the [llm/skills](https://github.com/roxblnfk/skills) Composer
+> plugin also get this package's agent skill synced into `.agents/skills/`
+> automatically on install.
+
+> Assembling a combination? The family's integration matrix lives in the core:
+> `vendor/rasuvaeff/yii3-ab-testing/docs/integration.md`.
 
 ## Requirements
 
@@ -26,6 +32,8 @@ need it, pins a subject to a variant across weight changes via a signed cookie.
 ```bash
 composer require rasuvaeff/yii3-ab-testing-web
 ```
+
+Upgrading from 1.x? See [UPGRADE.md](UPGRADE.md).
 
 ## Identity vs stickiness
 
@@ -190,7 +198,7 @@ remain a kill switch. `AbTesting::assign()` stays pure.
 | `SubjectIdGeneratorInterface` | `generate()` + `isValid()`: the id format and the check that accepts it back |
 | `HexSubjectIdGenerator` | default: 32 lowercase hex characters |
 | `CookieAssignmentStore` | `AssignmentStore` over one signed cookie; `fromRequest()` / `applyToResponse()` |
-| `ConfigurationAwareAssignmentStore` | optional store extension: sticky lookups scoped by core `configurationId` |
+| `SignedReceiptCodec` | Signs an `AssignmentReceipt` into a transport-independent string, so a SPA can return it in a JSON body |
 | `StickyAssignmentMiddleware` | ready request-scoped cookie store + sticky resolver PSR-15 integration |
 | `StickyAssignmentRequestAccessor` | typed access to the request resolver and store |
 | `StickyAssignmentResolver` | `AssignmentResolver` decorator over any core resolver + store |

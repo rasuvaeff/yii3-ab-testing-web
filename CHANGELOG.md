@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.0.0 — 2026-08-01
+
+### Added
+
+- `SignedReceiptCodec` — signs a core `AssignmentReceipt` into a
+  transport-independent string. Signing used to live inside
+  `CookieAssignmentStore`, tied to `CookieSigner`, so a single-page application
+  holding the receipt in `localStorage` had no way to prove it was genuine and
+  a client could claim a variant it was never assigned.
+
+### Changed
+
+- **Breaking.** Requires `rasuvaeff/yii3-ab-testing` `^2.0`.
+- **Breaking.** `ConfigurationAwareAssignmentStore` moved to the core. Import it
+  from `Rasuvaeff\Yii3AbTesting` — a local copy would be worse than a
+  duplicate, because `StickyAssignmentResolver` matches on it with `instanceof`
+  and a store implementing the other copy silently loses configuration
+  awareness.
+- **Breaking.** `Assignment`'s boolean properties became methods
+  (`isSticky()`, `isForced()`, …) and the constructor takes `reason` / `source`.
+
 ## 1.2.0 — 2026-08-01
 
 - Add ready `StickyAssignmentMiddleware` and typed request accessors for subject

@@ -27,7 +27,7 @@
         "psr/http-message": "^2.0",
         "psr/http-server-handler": "^1.0",
         "psr/http-server-middleware": "^1.0",
-        "rasuvaeff/yii3-ab-testing": "^1.6",
+        "rasuvaeff/yii3-ab-testing": "^2.0",
         "yiisoft/cookies": "^1.2"
     },
     "require-dev": {
@@ -63,6 +63,11 @@
             "ext-intl": "1.0.0"
         },
         "sort-packages": true
+    },
+    "extra": {
+        "skills": {
+            "source": "resources/skills"
+        }
     },
     "scripts": {
         "bc-check": "roave-backward-compatibility-check",

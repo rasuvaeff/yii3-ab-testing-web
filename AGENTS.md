@@ -16,6 +16,12 @@ Public API:
   signed cookie; request-scoped (`fromRequest()` / `applyToResponse()`).
 - `StickyAssignmentResolver` — core `AssignmentResolver` decorator over another
   resolver + any `AssignmentStore`.
+- `SignedReceiptCodec` — signs a core `AssignmentReceipt` into a
+  transport-independent string. Use it wherever the receipt leaves the server
+  without a cookie (a SPA posting it back in JSON). Never trust an unsigned
+  receipt: a client that edits the variant would corrupt analytics silently,
+  and re-resolving server-side answers a different question — after a reweight
+  it returns the variant the visitor *would* get now, not the one they saw.
 
 **No config-plugin (`config/di.php`).** A cookie store is request-scoped and cannot
 be a DI singleton, and middleware are added to the application's middleware stack
@@ -62,10 +68,36 @@ make release-check
 `make test-coverage` and `make mutation` bootstrap `pcov` inside the
 `composer:2` container because the base image has no coverage driver.
 
+## Mutation testing
+
+`minMsi` is 98, and the gap is accounted for rather than unexplained. Of 188
+mutants: 182 killed outright, 4 timed out, 2 escaped.
+
+**The 4 timeouts are real detections, not flakiness.** Each removes the call or
+flips the comparison that makes an eviction loop terminate
+(`applyToResponse`'s `do…while(true)`, `enforceEntryLimit`'s `while`,
+`evictOldest`'s null guard), so the mutant hangs — which is exactly what the
+code would do in production. Do not "fix" them by adding time limits.
+
+**The 2 escaped are equivalent under this code's constraints:**
+
+| Where | Mutation | Why no test can kill it |
+|---|---|---|
+| `CookieAssignmentStore` `!$signer->isSigned()` guard | `return` removed | `CookieSigner::validate()` throws `RuntimeException` on an unsigned cookie, and the surrounding `catch (\RuntimeException…)` returns the same empty maps. The guard is explicit flow rather than exception-driven flow, so it stays. |
+| `toEntryMaps` guard chain, first `\|\|` → `&&` | operand merge | Killing it needs a non-array whose `isset($x['v'])` is true — an `ArrayAccess` object. `json_decode(assoc: true)` never produces one, and strings are handled by the branch above. |
+
+If a change makes either killable, kill it. Adding a **third** escaped mutant
+fails the gate — strengthen the assertion, never lower `minMsi`.
+
 ## Invariants & gotchas
 
-- Requires core `^1.6` (`AssignmentResolver` and configuration ids). Resolves from
-  Packagist; no path repository needed.
+- Requires core `^2.0`. `ConfigurationAwareAssignmentStore` now lives in the
+  **core**, not here: the database package implements it too, and sibling
+  adapters must not depend on each other to share a store contract. A local
+  copy of that interface would be worse than a duplicate — `StickyAssignmentResolver`
+  matches on it with `instanceof`, so a store implementing the *other* copy
+  would silently take the non-configuration-aware branch and reuse a variant
+  across a reweight.
 - **`SubjectIdGeneratorInterface` owns BOTH generation and validation.** They
   cannot be split: the middleware reuses a cookie only when `isValid()` accepts
   it, so a generator whose check rejects its own output mints a new id on every
@@ -90,8 +122,8 @@ make release-check
   or sticky resolution (kill switch always wins); forced on an enabled experiment
   bypasses targeting/store; otherwise targeting is evaluated before store access,
   and mismatch returns fallback without reading/writing sticky data. A stored
-  variant is reused only while it remains in the experiment (`isSticky = true`);
-  fallbacks are not stored.
+  variant is reused only while it remains in the experiment
+  (`source: AssignmentSource::Store`); fallbacks are not stored.
 - Tests use `nyholm/psr7` for PSR-7 messages and a real `Yiisoft\Cookies\CookieSigner`.
 - Code: `declare(strict_types=1)`; `SubjectIdMiddleware`/`StickyAssignmentResolver`
   are `final readonly`, `CookieAssignmentStore` is `final` (mutable variant map);

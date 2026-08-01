@@ -15,6 +15,12 @@
 
 > Используете AI-ассистента? В [llms.txt](llms.txt) — компактный API-справочник,
 > которым можно поделиться с моделью.
+> Проекты с Composer-плагином [llm/skills](https://github.com/roxblnfk/skills)
+> дополнительно получают agent skill этого пакета: он автоматически синкается в
+> `.agents/skills/` при установке.
+
+> Собираете свою комбинацию? Матрица интеграций семейства живёт в ядре:
+> `vendor/rasuvaeff/yii3-ab-testing/docs/integration.ru.md`.
 
 ## Требования
 
@@ -28,6 +34,8 @@
 ```bash
 composer require rasuvaeff/yii3-ab-testing-web
 ```
+
+Обновляетесь с 1.x? См. [UPGRADE.md](UPGRADE.md).
 
 ## Идентичность vs sticky-привязка
 
@@ -199,7 +207,7 @@ $assignment = $resolver->resolve(
 | `SubjectIdGeneratorInterface` | `generate()` + `isValid()`: формат id и проверка, принимающая его обратно |
 | `HexSubjectIdGenerator` | по умолчанию: 32 hex-символа в нижнем регистре |
 | `CookieAssignmentStore` | `AssignmentStore` поверх одной подписанной cookie; `fromRequest()` / `applyToResponse()` |
-| `ConfigurationAwareAssignmentStore` | опциональное расширение store: sticky-поиск с учётом core `configurationId` |
+| `SignedReceiptCodec` | Подписывает `AssignmentReceipt` в транспорт-независимую строку, чтобы SPA могло вернуть его в JSON-теле |
 | `StickyAssignmentMiddleware` | готовая PSR-15 интеграция request-scoped store и sticky resolver |
 | `StickyAssignmentRequestAccessor` | типизированный доступ к resolver и store в запросе |
 | `StickyAssignmentResolver` | декоратор `AssignmentResolver` поверх любого core resolver и store |
