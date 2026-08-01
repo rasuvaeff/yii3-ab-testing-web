@@ -199,6 +199,7 @@ $assignment = $resolver->resolve(
 | `SubjectIdGeneratorInterface` | `generate()` + `isValid()`: формат id и проверка, принимающая его обратно |
 | `HexSubjectIdGenerator` | по умолчанию: 32 hex-символа в нижнем регистре |
 | `CookieAssignmentStore` | `AssignmentStore` поверх одной подписанной cookie; `fromRequest()` / `applyToResponse()` |
+| `SignedReceiptCodec` | Подписывает `AssignmentReceipt` в транспорт-независимую строку, чтобы SPA могло вернуть его в JSON-теле |
 | `StickyAssignmentMiddleware` | готовая PSR-15 интеграция request-scoped store и sticky resolver |
 | `StickyAssignmentRequestAccessor` | типизированный доступ к resolver и store в запросе |
 | `StickyAssignmentResolver` | декоратор `AssignmentResolver` поверх любого core resolver и store |

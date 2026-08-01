@@ -16,6 +16,12 @@ Public API:
   signed cookie; request-scoped (`fromRequest()` / `applyToResponse()`).
 - `StickyAssignmentResolver` — core `AssignmentResolver` decorator over another
   resolver + any `AssignmentStore`.
+- `SignedReceiptCodec` — signs a core `AssignmentReceipt` into a
+  transport-independent string. Use it wherever the receipt leaves the server
+  without a cookie (a SPA posting it back in JSON). Never trust an unsigned
+  receipt: a client that edits the variant would corrupt analytics silently,
+  and re-resolving server-side answers a different question — after a reweight
+  it returns the variant the visitor *would* get now, not the one they saw.
 
 **No config-plugin (`config/di.php`).** A cookie store is request-scoped and cannot
 be a DI singleton, and middleware are added to the application's middleware stack

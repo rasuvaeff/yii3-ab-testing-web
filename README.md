@@ -190,6 +190,7 @@ remain a kill switch. `AbTesting::assign()` stays pure.
 | `SubjectIdGeneratorInterface` | `generate()` + `isValid()`: the id format and the check that accepts it back |
 | `HexSubjectIdGenerator` | default: 32 lowercase hex characters |
 | `CookieAssignmentStore` | `AssignmentStore` over one signed cookie; `fromRequest()` / `applyToResponse()` |
+| `SignedReceiptCodec` | Signs an `AssignmentReceipt` into a transport-independent string, so a SPA can return it in a JSON body |
 | `StickyAssignmentMiddleware` | ready request-scoped cookie store + sticky resolver PSR-15 integration |
 | `StickyAssignmentRequestAccessor` | typed access to the request resolver and store |
 | `StickyAssignmentResolver` | `AssignmentResolver` decorator over any core resolver + store |
