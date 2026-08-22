@@ -30,7 +30,7 @@ final class ConsentPolicyTest
 
         Assert::false($policy->allowsPersistence(new ServerRequest('GET', '/')));
         Assert::true($policy->allowsPersistence(
-            (new ServerRequest('GET', '/'))->withAttribute('consent', true),
+            (new ServerRequest('GET', '/'))->withAttribute('consent', value: true),
         ));
     }
 }

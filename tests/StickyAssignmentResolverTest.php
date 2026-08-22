@@ -193,7 +193,7 @@ final class StickyAssignmentResolverTest
 
         $assignment = $this->resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
 
-        Assert::true(in_array($assignment->variant, ['control', 'green'], true));
+        Assert::true(in_array($assignment->variant, ['control', 'green'], strict: true));
         Assert::same($this->store->stored['checkout-button'], $assignment->variant);
         Assert::count($this->store->gets, 1);
         Assert::count($this->store->puts, 1);

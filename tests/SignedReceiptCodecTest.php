@@ -59,7 +59,7 @@ final class SignedReceiptCodecTest
     {
         $encoded = $this->codec->encode($this->receipt());
         [$payload, $signature] = explode('.', $encoded);
-        $forged = json_decode((string) base64_decode(strtr($payload, '-_', '+/'), true), true);
+        $forged = json_decode((string) base64_decode(strtr($payload, '-_', '+/'), strict: true), associative: true);
         $forged['v'] = 'attacker-choice';
         $tampered = rtrim(strtr(base64_encode((string) json_encode($forged)), '+/', '-_'), '=') . '.' . $signature;
 
