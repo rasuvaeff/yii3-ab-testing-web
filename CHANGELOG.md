@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Adopt `rasuvaeff/rector-named-literals` and apply the named-argument rule to literal calls (development tooling only; no runtime behaviour changes).
+
 ## 2.0.0 — 2026-08-01
 
 ### Added

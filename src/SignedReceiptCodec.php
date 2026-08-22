@@ -76,7 +76,7 @@ final readonly class SignedReceiptCodec
             return null;
         }
 
-        $decoded = json_decode($this->decodePayload($payload), true);
+        $decoded = json_decode($this->decodePayload($payload), associative: true);
 
         if (!\is_array($decoded)) {
             return null;
@@ -104,7 +104,7 @@ final readonly class SignedReceiptCodec
 
     private function decodePayload(string $payload): string
     {
-        return (string) base64_decode(strtr($payload, '-_', '+/'), true);
+        return (string) base64_decode(strtr($payload, '-_', '+/'), strict: true);
     }
 
     private function signature(string $payload): string
