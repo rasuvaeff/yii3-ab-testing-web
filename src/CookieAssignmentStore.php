@@ -184,6 +184,25 @@ final class CookieAssignmentStore implements ConfigurationAwareAssignmentStore
     }
 
     /**
+     * Expires the cookie the browser still holds. Used when consent is
+     * withdrawn: {@see applyToResponse()} cannot do it, because a store built
+     * under a denied policy is never dirty and its writes are the very thing
+     * consent forbids. The deletion carries the same `secure` and `SameSite`
+     * attributes the store writes with, since a browser matches on those before
+     * it replaces anything, and no signature — an empty value carries nothing to
+     * sign.
+     */
+    public function applyDeletionToResponse(ResponseInterface $response): ResponseInterface
+    {
+        return (new Cookie(
+            name: $this->cookieName,
+            value: '',
+            secure: $this->secure,
+            sameSite: $this->sameSite,
+        ))->expire()->addToResponse($response);
+    }
+
+    /**
      * @throws \JsonException
      */
     private function signedCookie(): Cookie

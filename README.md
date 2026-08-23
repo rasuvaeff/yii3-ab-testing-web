@@ -78,7 +78,11 @@ $assignment = $ab->resolve(experiment: 'checkout-button', subjectId: $subjectId-
 
 Before consent, incoming identity and assignment cookies are ignored, a fresh
 `SubjectIdSource::Ephemeral` id exists only for the request, and no cookie is
-written. `AllowAllConsentPolicy` remains the default for backward compatibility;
+written. When the request still carries an `ab_id` or `ab_variants` cookie that
+earlier consent wrote, the response expires it — withdrawing consent clears the
+identifier instead of leaving it to travel in request headers until its own
+max-age runs out. A request without those cookies gets no `Set-Cookie` header at
+all. `AllowAllConsentPolicy` remains the default for backward compatibility;
 applications that require consent must pass their policy to both middleware.
 
 ### Anonymous to authenticated identity
@@ -207,7 +211,8 @@ remain a kill switch. `AbTesting::assign()` stays pure.
 
 - The subject id is an opaque 128-bit token (`random_bytes`), not a UUID, and
   carries no personal data, but it is a persistent identifier. A denied consent
-  policy prevents both identity and sticky-cookie reads/writes.
+  policy prevents both identity and sticky-cookie reads/writes, and expires any
+  such cookie the request still carries.
 - The sticky cookie is signed (`yiisoft/cookies` `CookieSigner`); a missing,
   unsigned, tampered, or malformed cookie is ignored and yields an empty store —
   never a partial or attacker-controlled variant map. Provide a strong signing key.

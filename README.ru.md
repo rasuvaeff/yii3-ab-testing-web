@@ -85,6 +85,10 @@ $assignment = $ab->resolve(experiment: 'checkout-button', subjectId: $subjectId-
 
 До согласия входящие identity- и assignment-cookie игнорируются, свежий id с
 `SubjectIdSource::Ephemeral` живёт только в запросе, cookie не записываются.
+Если запрос всё ещё несёт `ab_id` или `ab_variants`, записанные при прежнем
+согласии, ответ гасит их: отзыв согласия удаляет идентификатор, а не оставляет
+его ездить в заголовках до конца собственного max-age. На запрос без таких
+cookie заголовок `Set-Cookie` не выставляется вовсе.
 `AllowAllConsentPolicy` остаётся default для обратной совместимости; приложения,
 где требуется согласие, передают одну policy в оба middleware.
 
@@ -216,7 +220,8 @@ $assignment = $resolver->resolve(
 
 - Subject id — это непрозрачный 128-битный токен (`random_bytes`, не UUID), он
   не содержит персональных данных, но является постоянным идентификатором.
-  Отказ consent policy запрещает чтение и запись identity- и sticky-cookie.
+  Отказ consent policy запрещает чтение и запись identity- и sticky-cookie и
+  гасит те из них, что ещё пришли в запросе.
 - Sticky-cookie подписана (`yiisoft/cookies` `CookieSigner`); отсутствующая,
   неподписанная, подделанная или некорректная cookie игнорируется и даёт пустой
   store — никогда частичный или контролируемый злоумышленником variant map.

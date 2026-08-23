@@ -77,7 +77,9 @@ final class StickyAssignmentMiddlewareTest
         $response = $middleware->process($request, $handler);
 
         Assert::false($handler->assignment?->isSticky() ?? true);
-        Assert::false($response->hasHeader('Set-Cookie'));
+        // nothing is read or written; the only header is the deletion of the
+        // cookie earlier consent wrote
+        Assert::true(str_starts_with($response->getHeaderLine('Set-Cookie'), 'ab_variants=;'));
     }
 
     public function migrationRetainsAnonymousStickyAssignmentForAuthenticatedId(): void
@@ -147,7 +149,7 @@ final class StickyAssignmentMiddlewareTest
         Assert::false($response->hasHeader('Set-Cookie'));
     }
 
-    public function consentDenialLeavesAnExistingCookieAlone(): void
+    public function consentDenialExpiresAnExistingCookie(): void
     {
         $request = $this->requestWithSubject(new SubjectId(
             value: 'user-42',
@@ -159,6 +161,28 @@ final class StickyAssignmentMiddlewareTest
             signer: $this->signer,
             consentPolicy: new CallbackConsentPolicy(static fn(ServerRequest $request): bool => false),
         ))->process($request, new PassthroughHandler(new Response()));
+
+        $setCookie = $response->getHeaderLine('Set-Cookie');
+        Assert::true(str_starts_with($setCookie, 'ab_variants=;'));
+        // a browser replaces a cookie only when the attributes match the ones
+        // it was stored with
+        Assert::string($setCookie)->contains('Secure');
+        Assert::string($setCookie)->contains('SameSite=Lax');
+        Assert::string($setCookie)->contains('Path=/');
+        Assert::string($setCookie)->contains('Expires=');
+    }
+
+    public function consentDenialWithoutACookieWritesNoHeader(): void
+    {
+        $request = $this->requestWithSubject(
+            new SubjectId(value: 'ephemeral-1', source: SubjectIdSource::Ephemeral),
+        );
+
+        $response = (new StickyAssignmentMiddleware(
+            resolver: $this->abTesting,
+            signer: $this->signer,
+            consentPolicy: new CallbackConsentPolicy(static fn(ServerRequest $request): bool => false),
+        ))->process($request, new StickyResolvingHandler(new Response()));
 
         Assert::false($response->hasHeader('Set-Cookie'));
     }
