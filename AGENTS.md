@@ -91,6 +91,18 @@ fails the gate — strengthen the assertion, never lower `minMsi`.
 
 ## Invariants & gotchas
 
+- **Withdrawn consent clears cookies, it does not merely stop touching them.**
+  Both middleware expire an `ab_id`/`ab_variants` the request still carries when
+  the policy denies persistence; a persistent identifier that keeps riding in
+  request headers for up to a year is exactly what the consent governs. Two
+  rules hold the behaviour together: the deletion must repeat the `secure`,
+  `SameSite` and path the cookie was written with (a browser matches on those
+  before replacing anything), and a request without the cookie must produce no
+  `Set-Cookie` at all. The sticky deletion lives in
+  `CookieAssignmentStore::applyDeletionToResponse()`, not in `applyToResponse()`
+  — a store built under a denied policy is never dirty, and that method's job is
+  writing, which consent forbids.
+
 - Requires core `^2.0`. `ConfigurationAwareAssignmentStore` now lives in the
   **core**, not here: the database package implements it too, and sibling
   adapters must not depend on each other to share a store contract. A local

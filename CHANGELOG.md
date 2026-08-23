@@ -2,7 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- Withdrawing consent left the cookies earlier consent had written in the browser ([#15](https://github.com/rasuvaeff/yii3-ab-testing-web/issues/15)). Both middleware stopped reading and writing them, but an `ab_id` (max-age up to 365 days) or `ab_variants` (90 days) kept travelling in every request header — into access logs and any upstream that records them — until it expired on its own. A response now expires such a cookie when the policy denies persistence and the request still carries it, with the same `Secure`, `SameSite` and `Path` the cookie was written with. A request without those cookies still gets no `Set-Cookie` header.
+
+### Added
+
+- `CookieAssignmentStore::applyDeletionToResponse()` — expires the sticky cookie. `applyToResponse()` cannot: a store built under a denied policy is never dirty, and writing is the very thing consent forbids.
+
 ### Changed
+
+- `release.yml` now refuses to publish a GitHub Release for a tag that is not an ancestor of `master` or whose matrix build never went green, and matches the changelog heading as text rather than as a regular expression.
 
 - Adopt `rasuvaeff/rector-named-literals` and apply the named-argument rule to literal calls (development tooling only; no runtime behaviour changes).
 

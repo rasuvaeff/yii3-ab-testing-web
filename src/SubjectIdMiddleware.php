@@ -75,7 +75,11 @@ final readonly class SubjectIdMiddleware implements MiddlewareInterface
         if ($existing instanceof SubjectId) {
             $subjectId = $this->transitionIdentity(existing: $existing, anonymous: $anonymous);
 
-            return $handler->handle($this->accessor->with($request, $subjectId));
+            return $this->clearWithdrawnCookie(
+                response: $handler->handle($this->accessor->with($request, $subjectId)),
+                request: $request,
+                persistenceAllowed: $persistenceAllowed,
+            );
         }
 
         if ($anonymous instanceof SubjectId) {
@@ -89,7 +93,11 @@ final readonly class SubjectIdMiddleware implements MiddlewareInterface
         $response = $handler->handle($this->accessor->with($request, $subjectId));
 
         if (!$persistenceAllowed) {
-            return $response;
+            return $this->clearWithdrawnCookie(
+                response: $response,
+                request: $request,
+                persistenceAllowed: false,
+            );
         }
 
         $cookie = (new Cookie(
@@ -100,6 +108,35 @@ final readonly class SubjectIdMiddleware implements MiddlewareInterface
         ))->withMaxAge($this->maxAge);
 
         return $cookie->addToResponse($response);
+    }
+
+    /**
+     * Expires an `ab_id` the browser still holds once consent is withdrawn.
+     * Stopping to read and write the cookie is not enough: the identifier the
+     * consent governs keeps travelling in every request header — and landing in
+     * access logs and any upstream that records them — until its own max-age
+     * runs out, up to a year later.
+     *
+     * The deletion carries the same `secure` and `SameSite` attributes the
+     * cookie was written with, since a browser matches on those before it
+     * replaces anything. No cookie in the request means no header: a visitor who
+     * never consented must not collect a `Set-Cookie` on every response.
+     */
+    private function clearWithdrawnCookie(
+        ResponseInterface $response,
+        ServerRequestInterface $request,
+        bool $persistenceAllowed,
+    ): ResponseInterface {
+        if ($persistenceAllowed || !isset($request->getCookieParams()[$this->cookieName])) {
+            return $response;
+        }
+
+        return (new Cookie(
+            name: $this->cookieName,
+            value: '',
+            secure: $this->secure,
+            sameSite: $this->sameSite,
+        ))->expire()->addToResponse($response);
     }
 
     private function anonymousIdFromCookie(ServerRequestInterface $request): ?SubjectId

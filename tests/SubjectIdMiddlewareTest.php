@@ -14,6 +14,7 @@ use Rasuvaeff\Yii3AbTestingWeb\SubjectIdSource;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
+use Yiisoft\Cookies\Cookie;
 
 #[Test]
 #[Covers(SubjectIdMiddleware::class)]
@@ -164,8 +165,73 @@ final class SubjectIdMiddlewareTest
         $subjectId = (new SubjectIdRequestAccessor())->require($handler->received ?? $request);
 
         Assert::same($subjectId->source, SubjectIdSource::Ephemeral);
-        Assert::false($response->hasHeader('Set-Cookie'));
         Assert::false($subjectId->value === 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
+        // the only cookie written is the deletion of the withdrawn one
+        Assert::string($response->getHeaderLine('Set-Cookie'))->contains('ab_id=;');
+    }
+
+    public function withdrawnConsentExpiresTheIdentifierCookie(): void
+    {
+        $policy = new CallbackConsentPolicy(static fn(ServerRequest $request): bool => false);
+        $request = (new ServerRequest('GET', '/'))->withCookieParams([
+            'ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+        ]);
+
+        $response = (new SubjectIdMiddleware(consentPolicy: $policy))
+            ->process($request, new CapturingHandler(new Response()));
+
+        $setCookie = $response->getHeaderLine('Set-Cookie');
+        Assert::true(str_starts_with($setCookie, 'ab_id=;'));
+        // a browser replaces a cookie only when the attributes match the ones
+        // it was stored with
+        Assert::string($setCookie)->contains('Secure');
+        Assert::string($setCookie)->contains('SameSite=Lax');
+        Assert::string($setCookie)->contains('Path=/');
+        Assert::string($setCookie)->contains('Expires=');
+        Assert::true((new Cookie(name: 'ab_id'))->expire()->isExpired());
+    }
+
+    public function withdrawnConsentExpiresTheCookieForAnAuthenticatedVisitorToo(): void
+    {
+        $policy = new CallbackConsentPolicy(static fn(ServerRequest $request): bool => false);
+        $request = (new ServerRequest('GET', '/'))
+            ->withAttribute('ab.subjectId', 'user-42')
+            ->withCookieParams(['ab_id' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90']);
+
+        $response = (new SubjectIdMiddleware(consentPolicy: $policy))
+            ->process($request, new CapturingHandler(new Response()));
+
+        Assert::true(str_starts_with($response->getHeaderLine('Set-Cookie'), 'ab_id=;'));
+    }
+
+    public function consentDenialWithoutACookieWritesNoHeader(): void
+    {
+        $policy = new CallbackConsentPolicy(static fn(ServerRequest $request): bool => false);
+
+        $response = (new SubjectIdMiddleware(consentPolicy: $policy))
+            ->process(new ServerRequest('GET', '/'), new CapturingHandler(new Response()));
+
+        Assert::false($response->hasHeader('Set-Cookie'));
+    }
+
+    public function theDeletionKeepsTheConfiguredCookieAttributes(): void
+    {
+        $policy = new CallbackConsentPolicy(static fn(ServerRequest $request): bool => false);
+        $request = (new ServerRequest('GET', '/'))->withCookieParams([
+            'ab_visitor' => 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+        ]);
+
+        $response = (new SubjectIdMiddleware(
+            cookieName: 'ab_visitor',
+            secure: false,
+            sameSite: Cookie::SAME_SITE_STRICT,
+            consentPolicy: $policy,
+        ))->process($request, new CapturingHandler(new Response()));
+
+        $setCookie = $response->getHeaderLine('Set-Cookie');
+        Assert::true(str_starts_with($setCookie, 'ab_visitor=;'));
+        Assert::string($setCookie)->contains('SameSite=Strict');
+        Assert::false(str_contains($setCookie, 'Secure'));
     }
 
     public function defaultTransitionMigratesAnonymousAssignmentsToAuthenticatedId(): void

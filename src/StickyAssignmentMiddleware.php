@@ -63,6 +63,14 @@ final readonly class StickyAssignmentMiddleware implements MiddlewareInterface
         $stickyResolver = new StickyAssignmentResolver(resolver: $this->resolver, store: $store);
         $response = $handler->handle($this->stickyAccessor->with($request, $stickyResolver, $store));
 
-        return $persistenceAllowed ? $store->applyToResponse($response) : $response;
+        if ($persistenceAllowed) {
+            return $store->applyToResponse($response);
+        }
+
+        // withdrawn consent must clear what earlier consent wrote, not merely
+        // stop touching it; no cookie in the request means no header at all
+        return isset($request->getCookieParams()[$this->cookieName])
+            ? $store->applyDeletionToResponse($response)
+            : $response;
     }
 }
