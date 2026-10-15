@@ -85,3 +85,24 @@ $assignment = $resolver->resolve(
     context: null,           // optional AssignmentContext
 );
 ```
+
+### SignedReceiptCodec
+
+```php
+use Rasuvaeff\Yii3AbTestingWeb\SignedReceiptCodec;
+
+$codec = new SignedReceiptCodec(secret: $receiptSecret); // >= 32 bytes, server-only
+
+$forClient = $codec->encode($exposure->receipt());     // signed string for a JSON body / localStorage
+$receipt = $codec->decode($postedValue);               // ?AssignmentReceipt — null when the signature fails
+if ($receipt !== null) {
+    $ab->trackConversionForReceipt($receipt, goal: 'purchase');
+}
+```
+
+Signs a core `AssignmentReceipt` independently of the transport, for SPA flows
+where the receipt comes back in a request body. Never trust an unsigned receipt:
+a client could claim variant B while assigned A. Do not re-resolve the
+assignment instead — after a reweight it returns the variant the visitor would
+get now, not the one they saw. Rotating the secret invalidates outstanding
+receipts. Runnable: `examples/spa-endpoints.php`.

@@ -17,8 +17,10 @@ need it, pins a subject to a variant across weight changes via a signed cookie.
 > plugin also get this package's agent skill synced into `.agents/skills/`
 > automatically on install.
 
-> Assembling a combination? The family's integration matrix lives in the core:
-> `vendor/rasuvaeff/yii3-ab-testing/docs/integration.md`.
+> **Documentation site:** [rasuvaeff.github.io/yii3-ab-testing](https://rasuvaeff.github.io/yii3-ab-testing/)
+> covers the whole family — including the
+> [integration matrix](https://rasuvaeff.github.io/yii3-ab-testing/integration)
+> for assembling a combination.
 
 ## Requirements
 
