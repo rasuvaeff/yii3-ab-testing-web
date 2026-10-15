@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.1 — 2026-10-15
+
+### Documentation
+
+- `llms.txt` documents `SignedReceiptCodec`.
+- Link the family documentation site instead of a `vendor/` path that the
+  core's `export-ignore` removes.
+
 ## 2.1.0 — 2026-08-23
 
 ### Fixed

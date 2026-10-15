@@ -19,8 +19,10 @@
 > дополнительно получают agent skill этого пакета: он автоматически синкается в
 > `.agents/skills/` при установке.
 
-> Собираете свою комбинацию? Матрица интеграций семейства живёт в ядре:
-> `vendor/rasuvaeff/yii3-ab-testing/docs/integration.ru.md`.
+> **Сайт документации:** [rasuvaeff.github.io/yii3-ab-testing](https://rasuvaeff.github.io/yii3-ab-testing/)
+> охватывает всё семейство, включая
+> [матрицу интеграций](https://rasuvaeff.github.io/yii3-ab-testing/integration)
+> для сборки своей комбинации (на английском).
 
 ## Требования
 
