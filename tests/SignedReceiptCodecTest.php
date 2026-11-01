@@ -102,6 +102,14 @@ final class SignedReceiptCodecTest
         Assert::null($this->codec->decode($payload . '.' . $signature));
     }
 
+    public function rejectsASignedPayloadThatIsNotAJsonObject(): void
+    {
+        $payload = rtrim(strtr(base64_encode('123'), '+/', '-_'), '=');
+        $signature = hash_hmac('sha256', $payload, self::SECRET);
+
+        Assert::null($this->codec->decode($payload . '.' . $signature));
+    }
+
     public function rejectsAShortSecret(): void
     {
         Expect::exception(InvalidArgumentException::class)

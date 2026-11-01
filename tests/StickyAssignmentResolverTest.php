@@ -16,6 +16,7 @@ use Rasuvaeff\Yii3AbTesting\Exception\InvalidExperimentException;
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 use Rasuvaeff\Yii3AbTesting\WeightedHashAssignmentStrategy;
+use Rasuvaeff\Yii3AbTestingWeb\CookieAssignmentStore;
 use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentResolver;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -23,6 +24,7 @@ use Testo\Data\DataProvider;
 use Testo\Expect;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
+use Yiisoft\Cookies\CookieSigner;
 
 #[Test]
 #[Covers(StickyAssignmentResolver::class)]
@@ -223,6 +225,19 @@ final class StickyAssignmentResolverTest
 
         Assert::same($assignment->variant, 'variant-from-another-system');
         Assert::true($assignment->isSticky());
+    }
+
+    public function aConfigurationAwareStoreReceivesTheAssignmentThroughItsOwnMethod(): void
+    {
+        $store = new CookieAssignmentStore(signer: new CookieSigner('test-secret-key-test-secret-key-32'));
+        $resolver = new StickyAssignmentResolver(resolver: $this->abTesting, store: $store);
+
+        $assignment = $resolver->resolve(experiment: 'checkout-button', subjectId: 'user-1');
+
+        Assert::same(
+            $store->getForConfiguration('checkout-button', 'user-1', $assignment->configurationId),
+            $assignment->variant,
+        );
     }
 
     public function throwsForUnknownExperiment(): void

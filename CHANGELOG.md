@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Mutation testing now counts uncovered code (`--with-uncovered`, template mutator settings): overall MSI 95% before, 98.5% after, against `minMsi` 98. Added tests for signed non-object cookie payloads, numeric experiment keys, a cookie that cannot fit even without entries, eviction on an empty store, a receipt payload that is not a JSON object, and `StickyAssignmentResolver` with a configuration-aware store. No src changes.
+
 ## 2.1.1 — 2026-10-15
 
 ### Documentation

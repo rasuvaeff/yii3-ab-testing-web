@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3AbTestingWeb\Tests;
 
 use InvalidArgumentException;
+use LengthException;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use Psr\Http\Message\ServerRequestInterface;
@@ -346,6 +347,67 @@ final class CookieAssignmentStoreTest
         yield 'missing variant' => [['c' => 'config-v1']];
         yield 'non-string variant' => [['v' => 42, 'c' => 'config-v1']];
         yield 'non-string configuration id' => [['v' => 'green', 'c' => 42]];
+    }
+
+    #[DataProvider('nonObjectPayloadProvider')]
+    public function aSignedPayloadThatIsNotAJsonObjectYieldsAnEmptyCleanStore(string $payload): void
+    {
+        set_error_handler(static function (int $severity, string $message): never {
+            throw new \ErrorException($message, 0, $severity);
+        });
+
+        try {
+            $store = CookieAssignmentStore::fromRequest($this->requestWithCookie($this->signedValue($payload)), $this->signer);
+        } finally {
+            restore_error_handler();
+        }
+
+        Assert::null($store->get('checkout-button', 'user-1'));
+        Assert::same($store->applyToResponse($response = new Response()), $response);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function nonObjectPayloadProvider(): iterable
+    {
+        yield 'integer' => ['123'];
+        yield 'string' => ['"green"'];
+        yield 'null' => ['null'];
+    }
+
+    public function numericExperimentKeysAreSkippedAndLaterEntriesKept(): void
+    {
+        $store = CookieAssignmentStore::fromRequest(
+            $this->requestWithCookie($this->signedValue('{"0":"ignored","checkout-button":"green"}')),
+            $this->signer,
+        );
+
+        Assert::same($store->get('checkout-button', 'user-1'), 'green');
+        Assert::null($store->get('0', 'user-1'));
+    }
+
+    public function aCookieThatCannotFitEvenWithoutEntriesThrows(): void
+    {
+        $store = new CookieAssignmentStore(
+            signer: $this->signer,
+            cookieName: str_repeat('n', 300),
+            dirty: true,
+            maxCookieBytes: 256,
+        );
+
+        Expect::exception(LengthException::class);
+
+        $store->applyToResponse(new Response());
+    }
+
+    public function evictingFromAnEmptyStoreChangesNothing(): void
+    {
+        $store = new CookieAssignmentStore(signer: $this->signer);
+
+        (new \ReflectionMethod($store, 'evictOldest'))->invoke($store);
+
+        Assert::same($store->applyToResponse($response = new Response()), $response);
     }
 
     private function signedValue(string $value): string
