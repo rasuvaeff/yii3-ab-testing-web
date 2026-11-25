@@ -199,7 +199,12 @@ $assignment = $resolver->resolve(
 
 `StickyAssignmentResolver` реализует core `AssignmentResolver`. Fallback, forced
 и targeting-решения возвращаются до обращения к store; отключённый эксперимент
-остаётся kill switch. `AbTesting::assign()` остаётся чистым.
+остаётся kill switch, в том числе когда обёрнутый resolver — ваш декоратор:
+форсированный вариант пробуется, только если разрешение без него не вернуло
+`FallbackDisabled`, поэтому декоратор видит два вызова. Существование сохранённого
+варианта проверяется только по самому `AbTesting` (декоратор реестра не отдаёт);
+за декоратором задавайте экспериментам `configurationId`.
+`AbTesting::assign()` остаётся чистым.
 
 ## API reference
 

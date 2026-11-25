@@ -49,11 +49,40 @@ jobs:
             exit 1
           fi
 
-          conclusion=$(gh api "repos/$REPO/commits/$SHA/check-runs" \
-            --jq '[.check_runs[] | select(.name | startswith("PHP "))] | if length == 0 then "missing" else (map(.conclusion) | unique | join(",")) end')
+          # The tag is pushed seconds after the merge, while master's own build
+          # is still queued or running. A `conclusion` of null means "not
+          # settled yet" and an empty list means "not dispatched yet" — neither
+          # is a verdict, and judging them as one failed every release tagged
+          # promptly (`matrix conclusion: ` — an empty string, because
+          # `join(",")` over nulls yields nothing). Both are waited on instead.
+          deadline=$(( SECONDS + 900 ))
 
-          if [ "$conclusion" != "success" ]; then
-            echo "::error::$SHA has no successful build (matrix conclusion: $conclusion)." \
+          while :; do
+            states=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
+              --jq '[.check_runs[] | select(.name | startswith("PHP ")) | .conclusion // "pending"]')
+
+            found=$(printf '%s' "$states" | jq 'length')
+            pending=$(printf '%s' "$states" | jq '[.[] | select(. == "pending")] | length')
+
+            if [ "$found" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              break
+            fi
+
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$SHA has no settled matrix build after 15 minutes" \
+                "($found found, $pending still running). Re-run this workflow once the build" \
+                "on master has finished; the tag does not need to move."
+              exit 1
+            fi
+
+            echo "Waiting for the matrix build on $SHA ($found found, $pending still running)…"
+            sleep 20
+          done
+
+          verdicts=$(printf '%s' "$states" | jq -r '[.[] | select(. != "success")] | unique | join(",")')
+
+          if [ -n "$verdicts" ]; then
+            echo "::error::$SHA has no successful build (matrix conclusions: $verdicts)." \
               "A release must not be published for a commit whose CI did not pass."
             exit 1
           fi

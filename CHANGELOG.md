@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 2.1.2 — 2026-11-25
+
+### Bug fixes
+
+- `StickyAssignmentResolver` keeps the kill switch when the wrapped resolver is a decorator and not `AbTesting` itself: a forced variant no longer overrides a disabled experiment. A forced request now resolves twice (#24).
+
+### Documentation
+
+- A stored variant is checked against the current variants only when the wrapped resolver is `AbTesting`; behind a decorator use `configurationId` (#24).
+
+### Tests and CI
 
 - Mutation testing now counts uncovered code (`--with-uncovered`, template mutator settings): overall MSI 95% before, 98.5% after, against `minMsi` 98. Added tests for signed non-object cookie payloads, numeric experiment keys, a cookie that cannot fit even without entries, eviction on an empty store, a receipt payload that is not a JSON object, and `StickyAssignmentResolver` with a configuration-aware store. No src changes.
 

@@ -131,10 +131,12 @@ fails the gate — strengthen the assertion, never lower `minMsi`.
 - Configuration-aware cookie entries carry core `configurationId`; retain v1
   string-map decoding, but never reuse an entry for a different configuration.
 - `StickyAssignmentResolver` precedence: disabled returns fallback before forced
-  or sticky resolution (kill switch always wins); forced on an enabled experiment
+  or sticky resolution (kill switch always wins, for any wrapped resolver — it is read from
+  `DecisionReason::FallbackDisabled`, never from `instanceof AbTesting`); forced on an enabled experiment
   bypasses targeting/store; otherwise targeting is evaluated before store access,
   and mismatch returns fallback without reading/writing sticky data. A stored
-  variant is reused only while it remains in the experiment
+  variant is reused only while it remains in the experiment (known only when the
+  wrapped resolver is `AbTesting`; behind a decorator `configurationId` covers it)
   (`source: AssignmentSource::Store`); fallbacks are not stored.
 - Tests use `nyholm/psr7` for PSR-7 messages and a real `Yiisoft\Cookies\CookieSigner`.
 - Code: `declare(strict_types=1)`; `SubjectIdMiddleware`/`StickyAssignmentResolver`
