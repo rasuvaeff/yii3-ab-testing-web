@@ -201,6 +201,27 @@ final class StickyAssignmentResolverTest
         Assert::count($this->store->puts, 1);
     }
 
+    public function aDecoratedResolverKeepsTheKillSwitch(): void
+    {
+        $assignment = (new StickyAssignmentResolver(resolver: $this->decorated(), store: $this->store))
+            ->resolve(experiment: 'pricing-page', subjectId: 'user-1', forcedVariant: 'variant-b');
+
+        Assert::same($assignment->variant, 'control');
+        Assert::same($assignment->reason, DecisionReason::FallbackDisabled);
+        Assert::same($this->store->gets, []);
+        Assert::same($this->store->puts, []);
+    }
+
+    public function aDecoratedResolverStillForcesInAnEnabledExperiment(): void
+    {
+        $assignment = (new StickyAssignmentResolver(resolver: $this->decorated(), store: $this->store))
+            ->resolve(experiment: 'checkout-button', subjectId: 'user-1', forcedVariant: 'green');
+
+        Assert::same($assignment->variant, 'green');
+        Assert::same($assignment->reason, DecisionReason::Forced);
+        Assert::same($this->store->puts, []);
+    }
+
     public function aNonCoreResolverKeepsItsStoredVariantUnchecked(): void
     {
         // the "variant still exists" guard reads the core registry; behind any
@@ -245,6 +266,28 @@ final class StickyAssignmentResolverTest
         Expect::exception(InvalidExperimentException::class);
 
         $this->resolver->resolve(experiment: 'nope', subjectId: 'user-1');
+    }
+
+    private function decorated(): AssignmentResolver
+    {
+        return new readonly class ($this->abTesting) implements AssignmentResolver {
+            public function __construct(private AssignmentResolver $inner) {}
+
+            #[\Override]
+            public function resolve(
+                string $experiment,
+                string $subjectId,
+                ?string $forcedVariant = null,
+                ?AssignmentContext $context = null,
+            ): Assignment {
+                return $this->inner->resolve(
+                    experiment: $experiment,
+                    subjectId: $subjectId,
+                    forcedVariant: $forcedVariant,
+                    context: $context,
+                );
+            }
+        };
     }
 
     private function targetedResolver(): StickyAssignmentResolver

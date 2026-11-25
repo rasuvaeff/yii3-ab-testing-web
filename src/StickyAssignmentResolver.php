@@ -11,6 +11,7 @@ use Rasuvaeff\Yii3AbTesting\AssignmentResolver;
 use Rasuvaeff\Yii3AbTesting\AssignmentSource;
 use Rasuvaeff\Yii3AbTesting\AssignmentStore;
 use Rasuvaeff\Yii3AbTesting\ConfigurationAwareAssignmentStore;
+use Rasuvaeff\Yii3AbTesting\DecisionReason;
 
 /**
  * Resolves an assignment with stickiness: a previously stored variant wins over a
@@ -26,6 +27,10 @@ use Rasuvaeff\Yii3AbTesting\ConfigurationAwareAssignmentStore;
  *    the store, so a previous sticky assignment cannot bypass targeting.
  *  - Configuration-aware stores reuse a variant only for the same experiment
  *    configuration id. Legacy stores retain their original behavior.
+ *  - A stored variant is checked against the experiment's current variants only
+ *    when the wrapped resolver is {@see AbTesting} itself: a decorator exposes
+ *    no registry. Give experiments a configuration id to invalidate stored
+ *    variants behind one.
  *  - Fallback results are not stored.
  *  - An assignment served from the store carries `isSticky = true`.
  *
@@ -45,20 +50,23 @@ final readonly class StickyAssignmentResolver implements AssignmentResolver
         ?string $forcedVariant = null,
         ?AssignmentContext $context = null,
     ): Assignment {
-        if ($this->resolver instanceof AbTesting && !$this->resolver->getRegistry()->get($experiment)->enabled) {
-            return $this->resolver->resolve(
-                experiment: $experiment,
-                subjectId: $subjectId,
-                context: $context,
-            );
-        }
-
+        // Resolved without the forced variant first: core lets a forced variant win over
+        // a disabled experiment, and only the decision itself tells whether it is disabled,
+        // whatever decorators the resolver is wrapped in.
         $assignment = $this->resolver->resolve(
             experiment: $experiment,
             subjectId: $subjectId,
-            forcedVariant: $forcedVariant,
             context: $context,
         );
+
+        if ($forcedVariant !== null && $assignment->reason !== DecisionReason::FallbackDisabled) {
+            $assignment = $this->resolver->resolve(
+                experiment: $experiment,
+                subjectId: $subjectId,
+                forcedVariant: $forcedVariant,
+                context: $context,
+            );
+        }
 
         if ($assignment->isFallback() || $assignment->isForced() || $assignment->isSticky()) {
             return $assignment;

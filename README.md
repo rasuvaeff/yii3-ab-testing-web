@@ -190,7 +190,12 @@ still accepted.
 
 `StickyAssignmentResolver` implements core `AssignmentResolver`. Fallback,
 forced and targeting decisions return before store access; disabled experiments
-remain a kill switch. `AbTesting::assign()` stays pure.
+remain a kill switch, also when the wrapped resolver is your own decorator: a
+forced variant is tried only after a resolution without it did not come back as
+`FallbackDisabled`, so a decorator sees two calls. Whether a stored variant still
+exists is checked only against `AbTesting` itself (a decorator exposes no
+registry); behind a decorator, give experiments a `configurationId`.
+`AbTesting::assign()` stays pure.
 
 ## API reference
 
