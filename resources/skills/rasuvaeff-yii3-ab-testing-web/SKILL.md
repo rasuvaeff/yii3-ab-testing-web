@@ -65,8 +65,10 @@ the client makes on render.
 
 Identity comes from the request attribute before the cookie, so a token-authenticated
 application puts its user id there and the cookie branch is never taken. For a
-cross-origin SPA set `SameSite=None` + `Secure` (both are constructor
-parameters) and send credentials.
+cross-origin SPA `SubjectIdMiddleware` takes `sameSite:` and `secure:` (set
+`SameSite=None` + `Secure`, send credentials). `StickyAssignmentMiddleware` does
+not expose them: its `ab_variants` cookie is always `SameSite=Lax`, so it is not
+sent on cross-site requests.
 
 See `examples/spa-endpoints.php`.
 
