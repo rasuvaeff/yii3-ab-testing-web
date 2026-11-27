@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.3 — 2026-11-27
+
+- Docs: the agent skill no longer claims `SameSite`/`Secure` are constructor parameters of both middlewares: only `SubjectIdMiddleware` takes them, the sticky `ab_variants` cookie is always `SameSite=Lax`.
+
 ## 2.1.2 — 2026-11-25
 
 ### Bug fixes
